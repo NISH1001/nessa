@@ -149,8 +149,32 @@ class ScheduleTest {
 
     @Test fun `single stretches map directly`() {
         assertEquals(SleepEntry(MON, true, t(9), t(17)), nativeEntry(MON, listOf(Seg(t(9), t(17))), nowMin = null))
-        assertEquals(SleepEntry(MON, true, t(21), 0), nativeEntry(MON, listOf(Seg(t(21), 1440)), nowMin = null))
         assertEquals(SleepEntry(MON, true, 0, t(7)), nativeEntry(MON, listOf(Seg(0, t(7))), nowMin = null))
+    }
+
+    /**
+     * The bug that woke the owner: an evening stretch was written as "sleep 21:00, wake 00:00", and the
+     * robot took the wake time literally and woke up at midnight. A night must always be written the way
+     * Whisker's own app writes it: sleep in the evening, wake the next morning.
+     */
+    @Test fun `an evening stretch is written with the next morning's wake time and never wakes at midnight`() {
+        assertEquals(SleepEntry(MON, true, t(21), t(7)), nativeEntry(MON, listOf(Seg(t(21), 1440)), nowMin = null, nextMorningEnd = t(7)))
+        assertEquals(SleepEntry(MON, true, t(21), t(7)), nativeEntry(MON, listOf(Seg(0, t(7)), Seg(t(21), 1440)), nowMin = t(22), nextMorningEnd = t(7)))
+        assertEquals(SleepEntry(MON, true, t(21), t(8)), nativeEntry(MON, listOf(Seg(t(9), t(17)), Seg(t(21), 1440)), nowMin = t(18), nextMorningEnd = t(8)))
+    }
+
+    @Test fun `no entry Nessa sends ever has a wake time of midnight while a night follows`() {
+        for (presence in listOf(Presence.Unknown, Presence.Home)) for (dow in 0..6) for (now in 0 until 1440 step 5) {
+            nativeWeek(week, presence, dow, now).forEach { e ->
+                if (e.isEnabled && e.sleepTime != e.wakeTime) assertTrue("dow=$dow now=$now $e", e.wakeTime != 0)
+            }
+        }
+        nativeWeek(WeekSchedule.default(), Presence.Home, MON, t(21, 30)).forEach { assertEquals(SleepEntry(it.dayOfWeek, true, t(22), t(7)), it) }
+    }
+
+    @Test fun `in the evening every day on the robot is the same plain night, so the phone is not needed at midnight`() {
+        val entries = nativeWeek(week, Presence.Home, MON, t(22))
+        assertEquals((0..6).map { SleepEntry(it, true, t(21), t(7)) }, entries)
     }
 
     /** Whatever entry is chosen for today must tell the robot the right thing from now until the phone's next change. */

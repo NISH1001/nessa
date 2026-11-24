@@ -148,34 +148,50 @@ fun SleepEntry.restsAt(minute: Int): Boolean = when {
  * One entry can hold one stretch, or "from midnight until X" plus "from Y until midnight".
  * With [nowMin] (today) the entry is exact from now until the phone's next change, and keeps
  * tonight's stretch when it can. Without it (other days) it is the day's morning and evening.
+ *
+ * A stretch that runs to midnight is written with [nextMorningEnd], the time the night ends the next
+ * morning, as its wake time: "sleep 21:00, wake 07:00", the way Whisker's own app writes a night.
+ * Writing "wake 00:00" makes the robot wake up at midnight.
  */
-fun nativeEntry(dow: Int, segs: List<Seg>, nowMin: Int?): SleepEntry {
-    fun single(seg: Seg) = SleepEntry(dow, true, seg.start, seg.end % DAY_MINUTES)
+fun nativeEntry(dow: Int, segs: List<Seg>, nowMin: Int?, nextMorningEnd: Int = 0): SleepEntry {
+    fun single(seg: Seg) = SleepEntry(dow, true, seg.start, seg.end)
+    fun night(evening: Seg) = SleepEntry(dow, true, evening.start, if (nextMorningEnd in 1 until evening.start) nextMorningEnd else 0)
     if (segs.isEmpty()) return SleepEntry(dow, false, 480, 480)
     if (segs.first() == Seg(0, DAY_MINUTES)) return SleepEntry(dow, true, 0, 0)
     val evening = segs.last().takeIf { it.end == DAY_MINUTES }
 
     if (nowMin == null) {
         val morning = segs.first().takeIf { it.start == 0 }
-        return if (morning != null && evening != null && morning != evening) SleepEntry(dow, true, evening.start, morning.end)
-        else single(morning ?: evening ?: segs.first())
+        return when {
+            morning != null && evening != null -> SleepEntry(dow, true, evening.start, morning.end)
+            evening != null -> night(evening)
+            else -> single(morning ?: segs.first())
+        }
     }
 
     val current = segs.firstOrNull { nowMin in it }
-    if (current != null) {
-        return if (evening != null && evening != current) SleepEntry(dow, true, evening.start, current.end) else single(current)
+    return when {
+        current != null && current == evening -> night(evening)
+        current != null && evening != null -> SleepEntry(dow, true, evening.start, current.end)
+        current != null -> single(current)
+        else -> when (val next = segs.firstOrNull { it.start > nowMin }) {
+            null -> SleepEntry(dow, false, 480, 480)
+            evening -> night(next)
+            else -> single(next)
+        }
     }
-    val next = segs.firstOrNull { it.start > nowMin } ?: return SleepEntry(dow, false, 480, 480)
-    return single(next)
 }
 
 /** All seven entries to send to the robot right now. */
 fun nativeWeek(schedule: WeekSchedule, presence: Presence, todayDow: Int, nowMin: Int): List<SleepEntry> =
     (0..6).map { dow ->
+        // Days other than today hold only quiet time, which is right whether or not the phone is around.
+        fun segsFor(day: Int) =
+            if (day == todayDow) effectiveSegments(schedule, presence, day) else schedule.segments(day, onlyEvenWhenHome = true)
+        val nextMorningEnd = schedule.segments((dow + 1) % 7, onlyEvenWhenHome = true).firstOrNull()?.takeIf { it.start == 0 }?.end ?: 0
         when {
             presence == Presence.Away -> SleepEntry(dow, true, 0, 0)
-            dow == todayDow -> nativeEntry(dow, effectiveSegments(schedule, presence, dow), nowMin)
-            // Other days hold only quiet time, which is right whether or not the phone is around.
-            else -> nativeEntry(dow, schedule.segments(dow, onlyEvenWhenHome = true), null)
+            dow == todayDow -> nativeEntry(dow, segsFor(dow), nowMin, nextMorningEnd)
+            else -> nativeEntry(dow, segsFor(dow), null, nextMorningEnd)
         }
     }
