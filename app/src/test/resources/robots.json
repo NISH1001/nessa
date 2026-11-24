@@ -1,0 +1,149 @@
+[
+ {
+  "serial": "LRE-TEST-0001",
+  "userId": "0",
+  "type": "LRE",
+  "name": "Litter-Robot EVO",
+  "isOnboarded": true,
+  "updatedAt": "2026-11-23T22:24:50.489000Z",
+  "timezone": "America/New_York",
+  "language": "en",
+  "state": {
+   "serial": "LRE-TEST-0001",
+   "userId": "0",
+   "powerStatus": "On",
+   "isOnline": true,
+   "state": "StRobotIdle",
+   "type": "LRE",
+   "isSleeping": false,
+   "isNightLightOn": false,
+   "wifiRssi": -44,
+   "dfiLevelPercent": 30,
+   "isOnlineUpdatedAt": "2026-11-23T14:44:48.490000Z",
+   "setupDateTime": "2026-11-02T21:44:06.216000Z",
+   "lastSeen": "2026-11-23T14:44:48.490000Z",
+   "statusIndicator": {
+    "title": "Ready",
+    "type": "READY"
+   },
+   "firmwareVersions": {
+    "mcuVersion": {
+     "title": "Robot Firmware",
+     "value": "v4.7.0 2904_104"
+    },
+    "cameraVersion": null,
+    "wifiVersion": {
+     "title": "IoT Firmware",
+     "value": "v2.6.4"
+    },
+    "edgeVersion": null,
+    "aiVersion": null
+   },
+   "weightSensor": 930.0,
+   "globeLitterLevel": 0,
+   "optimalLitterLevel": 434,
+   "lastResetOdometerCleanCycles": 1,
+   "hopperLitterLevel": 0,
+   "hopperFault": null,
+   "hopperStatusIndicator": {
+    "title": "Disabled",
+    "value": "DISABLED"
+   },
+   "isHopperInstalled": false,
+   "hopperStateLastUpdated": null,
+   "hopperLastConnected": null,
+   "hopperLastDisconnected": null,
+   "hopperLastDispensed": null,
+   "dfiFullCounter": 0,
+   "odometerCleanCycles": 39,
+   "isLaserDirty": false,
+   "cycleState": "StWaitOn",
+   "cycleType": "StCycleIdle",
+   "catDetect": "WeightClear",
+   "isBonnetRemoved": false,
+   "isDrawerRemoved": false,
+   "isDrawerFull": false,
+   "extendedScaleActivity": false,
+   "globeMotorFaultStatus": "MtrFaultClear",
+   "globeMotorRetractFaultStatus": "MtrFaultClear",
+   "pinchStatus": "Clear",
+   "isUsbFaultDetected": false,
+   "isGasSensorFaultDetected": false,
+   "odometerEmptyCycles": 0,
+   "odometerFilterCycles": 0,
+   "odometerPowerCycles": 35,
+   "isFirmwareUpdating": false,
+   "espUpdateStatus": null,
+   "stmUpdateStatus": null,
+   "displayCode": "DcModeIdle",
+   "scoopsSaved": 39,
+   "litterLevelPercent": 100.0,
+   "globeLitterLevelIndicator": "Optimal",
+   "wasteLabel": "Low"
+  },
+  "panelSettings": {
+   "displayIntensity": "Low",
+   "isKeypadLocked": false
+  },
+  "nightLightSettings": {
+   "mode": "Off",
+   "brightness": 70,
+   "color": "#00000000"
+  },
+  "nextFilterReplacementDate": "2026-12-02T21:44:06.216000Z",
+  "litterRobotSettings": {
+   "isSmartWeightEnabled": false,
+   "optimalLitterLevel": 434,
+   "cycleDelay": 5,
+   "dynamicCycleDelayEnabled": false
+  },
+  "sleepSchedules": [
+   {
+    "dayOfWeek": 0,
+    "isEnabled": true,
+    "sleepTime": 1260,
+    "wakeTime": 450
+   },
+   {
+    "dayOfWeek": 1,
+    "isEnabled": false,
+    "sleepTime": 480,
+    "wakeTime": 480
+   },
+   {
+    "dayOfWeek": 2,
+    "isEnabled": false,
+    "sleepTime": 480,
+    "wakeTime": 480
+   },
+   {
+    "dayOfWeek": 3,
+    "isEnabled": false,
+    "sleepTime": 480,
+    "wakeTime": 480
+   },
+   {
+    "dayOfWeek": 4,
+    "isEnabled": false,
+    "sleepTime": 480,
+    "wakeTime": 480
+   },
+   {
+    "dayOfWeek": 5,
+    "isEnabled": false,
+    "sleepTime": 480,
+    "wakeTime": 480
+   },
+   {
+    "dayOfWeek": 6,
+    "isEnabled": true,
+    "sleepTime": 1260,
+    "wakeTime": 450
+   }
+  ],
+  "litterSelection": null,
+  "aBrandNewFieldWhiskerAddedLater": {
+   "x": 1
+  }
+ }
+]

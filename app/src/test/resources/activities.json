@@ -1,0 +1,56 @@
+[
+ {
+  "messageId": "test-messageId",
+  "userId": "0",
+  "eventId": "test-eventId",
+  "serial": "LRE-TEST-0001",
+  "robotName": "Litter-Robot EVO",
+  "type": "CYCLE_COMPLETED",
+  "timestamp": "2026-11-24T00:20:35Z",
+  "subtype": "robotCycleStateIdle",
+  "categories": [
+   "UserFacing",
+   "Internal"
+  ]
+ },
+ {
+  "messageId": "test-messageId",
+  "userId": "0",
+  "eventId": "test-eventId",
+  "serial": "LRE-TEST-0001",
+  "robotName": "Litter-Robot EVO",
+  "type": "PET_VISIT",
+  "timestamp": "2026-11-24T00:13:38Z",
+  "subtype": null,
+  "categories": [
+   "UserFacing"
+  ],
+  "duration": 431,
+  "wasteType": null,
+  "petIds": [
+   "PET-TEST"
+  ],
+  "cameraEvents": [],
+  "petWeight": 930.0,
+  "wasteWeight": null,
+  "visitTime": "2026-11-24T00:13:38Z",
+  "isReassigned": false,
+  "reassignedAt": null,
+  "pawprintTimestamp": "2026-11-24T00:13:38Z",
+  "isWasteWeightValid": false
+ },
+ {
+  "messageId": "test-messageId",
+  "userId": "0",
+  "eventId": "test-eventId",
+  "serial": "LRE-TEST-0001",
+  "robotName": "Litter-Robot EVO",
+  "type": "CYCLE_COMPLETED",
+  "timestamp": "2026-11-23T22:29:44Z",
+  "subtype": "robotCycleStateIdle",
+  "categories": [
+   "UserFacing",
+   "Internal"
+  ]
+ }
+]

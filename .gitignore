@@ -1,0 +1,22 @@
+# Gradle / build output
+.gradle/
+.kotlin/
+build/
+/local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Secrets
+.env
+*.jks
+*.keystore
+
+# Tool scratch
+.superpowers/
+docs/superpowers/
