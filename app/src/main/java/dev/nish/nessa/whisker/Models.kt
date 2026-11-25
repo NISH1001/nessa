@@ -24,6 +24,7 @@ data class Robot(
     val nightLightSettings: NightLightSettings? = null,
     val panelSettings: PanelSettings? = null,
     val litterRobotSettings: LitterRobotSettings? = null,
+    val nextFilterReplacementDate: String? = null,
 )
 
 @Serializable
@@ -80,6 +81,8 @@ data class Activity(
     val duration: Int? = null,
     val petIds: List<String> = emptyList(),
     val subtype: String? = null,
+    val eventId: String? = null,
+    val messageId: String? = null,
 )
 
 enum class RobotCommand { CLEAN_CYCLE, POWER_ON, POWER_OFF }

@@ -158,24 +158,99 @@ DataStore, Room (log), WorkManager + AlarmManager exact alarms, foreground servi
   script using `pylitterbot` for comparison.
 - On the Pixel 9: walk-out/walk-in test, phone idle overnight, reboot.
 
-## Insights (owner request 2026-11-23; own plan after presence)
-What Whisker's activity feed gives per visit: time, **duration in seconds**, and **weight**. It does not
-give waste type or waste weight (always empty on this robot). History goes back to the robot's setup.
+## Insights (designed 2026-11-24, approved card set)
 
-Findings from a read-only look at the first three weeks of data:
-- Weights are noisy. Many readings are far from the cat's real weight (a third of it, or double), likely
-  from a cat standing half in, or a person handling the robot. Insights must filter to readings near
-  the cat's typical weight (for example within 15% of the recent median) before charting.
-- Visits are not logged every time: there were more cleaning cycles than recorded visits, and whole
-  days with cycles but no visits. Insights must say "recorded visits", and the cause is an open item
-  (possibly the robot's smart weight setting, which is off).
-- About 40% of recorded visits came within 15 minutes of the previous one, which matches the cat's
-  habit of going back to cover up.
+### Why
+Two things the owner wants to watch: **the cat's weight** over time, and **how often she visits**. Many
+visits can mean the box isn't clean enough (she goes back to cover the smell) or a health problem
+(urinary trouble, kidneys, diabetes). The charts separate those two where the data allows.
 
-Planned Home cards: weight trend (line, filtered), visits per day (bars, 7 and 30 days), typical time in
-the box (median, plus longest today), "return trips" (visits within 15 minutes of the previous one),
-usual times of day. Nessa keeps its own copy of the history on the phone (Room) so trends outlive
-whatever Whisker retains. Wording stays observational; it is not veterinary advice.
+### Goals
+- Charts on the **Home tab**, below the "You" and "Litter box" cards, in this order:
+  1. **Health watch**: a short checklist, ✓ when normal and an amber flag when not. Tapping a flag
+     scrolls to its chart. Stays silent ("Learning her usual") until there are 14 days with data.
+  2. **Weight**: one dot per reading; a dashed horizontal **median** line; readings more than 15% from
+     her usual weight drawn as hollow grey dots and left out of the median.
+  3. **Visits per day**: one bar per day; a dashed "usual" (median) line; a bar is amber when the
+     day has at least twice the usual. Above the chart: today's **return trips** (a visit within
+     15 min of the previous one), split into "before a cleaning" and "after a cleaning".
+  4. **Time in the box**: every visit as a dot (duration), a dashed "typical" (median) line.
+  5. **Usual times**: a 24-hour strip, one cell per hour, darker for more visits, plus a sentence
+     naming the busiest stretches.
+  6. **Robot**: cleanings today vs usual; drawer fullness and "drawer full in"; litter level and
+     trend; cleanings interrupted and safety stops this week (amber when above 0); filter due date.
+- One **range** control above the insights for every chart: 7 days, 30 days, 90 days, All.
+- **Interactive and reactive:** tap or drag on a chart shows the exact value; charts update by
+  themselves when new data arrives.
+- **Days without data are left out** (no bar, no gap filler), since those are days the robot was off.
+
+### Health watch checks (first version)
+| Check | Flag when |
+|---|---|
+| Weight | the 14-day median is 5% or more below the median of the 30 days before that |
+| Visits | today, or 2 of the last 3 days, at least twice the usual; the text says whether the box had cleaned before the return trips ("box was clean") or not ("box hadn't cleaned yet") |
+| No visits | no visit for 24 hours while the robot was on and awake for most of that time |
+| Robot | any safety stop, or more than 2 interrupted cleanings, in the last 7 days |
+Wording is observational ("Visits above usual"), never a diagnosis. Thresholds are constants in one
+place so they can be tuned.
+
+**"Usual" is a fixed baseline, not the selected range** (designer's call): the median over the 30 days
+before today, counting only days with data. Health watch, the amber bars and the dashed "usual" lines
+all use it, so switching the range never turns a flag or an amber bar on or off. The range only
+changes how much history the charts show.
+
+### Non-goals
+- Notifications for insights (Home tab only for now).
+- A header with the cat's photo.
+- Pee vs poop, waste weight: Whisker leaves these empty on the EVO.
+- Google Drive mirroring: later, following the owner's ecosystem protocol (one-writer JSONL files
+  under `My Drive/nishparadox/nessa/`, granted with the system folder picker, no Google APIs). Records
+  are stored with stable ids and a flat shape so this is a straight export later.
+
+### Data
+- **History is kept on the phone in a Room database** (Android's standard on-device SQLite), in the
+  app's private storage. Not backed up, removed on uninstall.
+- Tables (all keyed by a stable id so re-syncing never duplicates):
+  - `activity`: every Whisker activity: type, time, duration, weight, pet ids. Id: Whisker's
+    `eventId` (present on EVO activities, seen in real data), else `messageId`, else type + timestamp.
+    The `Activity` model must start reading these fields.
+  - `robot_reading`: one row per check (about every 15 min): time, drawer %, litter level %, litter
+    indicator, sleeping, power, cycle counter. Whisker keeps no history of these.
+- **Filter due date** comes from the robot's top-level `nextFilterReplacementDate` field (present on
+  the EVO). The `Robot` model must start reading it.
+- **Return trips, before or after a cleaning:** decided from Whisker's own history, by whether a
+  `CYCLE_COMPLETED` falls between the two visits. Works on history already in Whisker.
+  - Nessa's own action log moves here from DataStore (presence changes, robot updates).
+- **Sync runs whether or not "Manage sleep" is on** (designer's call): insights get their own
+  15-minute background job, separate from the schedule checks, so history and robot readings have no
+  gaps when sleep management is off.
+- **Sync:** at app start, on pull-to-refresh, and at each 15-minute check, fetch Whisker activities
+  page by page until reaching ones already stored (first run: everything, up to the existing 2,000
+  cap). Store a robot reading on each status fetch.
+- Derived numbers (medians, return trips, flags) are computed from the database in plain Kotlin,
+  never stored.
+
+### Approaches considered
+| Approach | Verdict |
+|---|---|
+| **Charts drawn natively in Compose (Canvas), history in Room** | **Chosen.** Full control over the specific marks (hollow outliers, dashed median, amber days, gaps); no new chart dependency; Room is the standard for months of rows and date-range queries. |
+| A chart library (Vico) | Rejected: the custom touches fight its defaults; one more dependency to keep working. |
+| A web page inside the app for charts | Rejected by the owner. |
+| No local history, download from Whisker each time | Rejected: the drawer and litter trends need readings Whisker doesn't keep; slower; blind offline. |
+
+### Constraints
+- Weight filter: "usual weight" = median of readings in the selected range that sit within 15% of
+  the median of all readings longer than 60 seconds (long visits are the reliable ones). Outliers
+  are still shown, hollow.
+- All times in the robot's own timezone.
+- Medians, never means.
+- Same short wording and status colors as the rest of the app; amber for "look at this".
+- Charts must be readable in light and dark theme; every mark has a tap target of at least 24 dp.
+- No personal data in the repo: tests and screenshots use made-up history.
+
+### Left to the builder
+Chart drawing details (axis ticks, spacing), the exact Room schema and migrations, how the range
+control looks, the empty and "collecting data" states.
 
 ## Open items
 1. ~~Task 0: verify "sleep now" via schedule rewrite~~ Done, works (see above).
@@ -188,6 +263,7 @@ whatever Whisker retains. Wording stays observational; it is not veterinary advi
 8. Power-off as the rest mode: not built yet. Needs a supervised test that `POWER_ON` works remotely
    after `POWER_OFF`. Until then rest always means sleep.
 6. Why some visits are not recorded; try turning smart weight on and compare.
+9. Insights: drawer-full forecast and litter trend need several days of Nessa's own readings.
 
 ## Behavior details (designer's calls unless marked)
 - **Which window lives on the robot:** for each weekday, the window that starts latest in the day (the
