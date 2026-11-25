@@ -293,8 +293,8 @@ control looks, the empty and "collecting data" states.
   button. Plain on/off, no timer (owner's choice). Glows green when on, goes dark when off, sinks with a
   haptic click when pressed; turning off asks once. While off the whole card goes dark, Clean now and
   Sleep now are disabled, and nothing else changes the robot. Sends `POWER_OFF` / `POWER_ON`; the hold
-  is cleared only once the robot reports on. **Unverified on the EVO:** whether a remotely powered-off
-  robot still accepts `POWER_ON`; needs a supervised test before release.
+  is cleared only once the robot reports on. ✅ **Verified on the EVO 2026-11-24** with the owner
+  present: a remotely powered-off robot accepts `POWER_ON` and comes back by itself.
 - **"When I'm away" setting (Settings → Presence):** choose **Sleep** (default: no cleaning, visits and
   weights still recorded) or **Power off** (nothing runs, nothing is recorded). Sleep windows at home
   always use sleep. The long-absence power-off below works on top of either choice.
