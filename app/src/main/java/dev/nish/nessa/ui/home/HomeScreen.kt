@@ -24,6 +24,10 @@ import dev.nish.nessa.ui.ConnectWhiskerCard
 import dev.nish.nessa.schedule.Reason
 import dev.nish.nessa.schedule.detail
 import dev.nish.nessa.ui.ScreenBody
+import dev.nish.nessa.ui.insights.InsightsSection
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import dev.nish.nessa.ui.appContainer
 import dev.nish.nessa.ui.presenceWhy
 import dev.nish.nessa.ui.settings.label
@@ -44,8 +48,15 @@ fun HomeScreen(onOpenLitter: () -> Unit) {
     KeepLitterFresh(vm)
 
     val refreshing by vm.refreshing.collectAsStateWithLifecycle()
-    PullToRefreshBox(isRefreshing = refreshing, onRefresh = { vm.refresh(showSpinner = true) }, modifier = Modifier.fillMaxSize()) {
-    ScreenBody {
+    val scroll = rememberScrollState()
+    val historySync = appContainer().historySync
+    val scope = rememberCoroutineScope()
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = { vm.refresh(showSpinner = true); scope.launch { historySync.sync() } },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+    ScreenBody(scroll) {
         when (val s = state) {
             LitterState.Loading -> Text("Loading…", style = MaterialTheme.typography.bodyLarge)
             LitterState.NotConnected -> ConnectWhiskerCard()
@@ -82,6 +93,7 @@ fun HomeScreen(onOpenLitter: () -> Unit) {
                 }
             }
         }
+        if (state !is LitterState.NotConnected) InsightsSection(scroll)
     }
     }
 }

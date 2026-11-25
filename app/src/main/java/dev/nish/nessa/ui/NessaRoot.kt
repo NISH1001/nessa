@@ -95,6 +95,7 @@ fun NessaRoot() {
                                     try {
                                         container.litter.refresh()
                                         container.litter.refreshHistory()
+                                        container.historySync.sync()
                                     } finally {
                                         refreshing = false
                                     }

@@ -113,3 +113,27 @@ class ApplyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         return if (result == ApplyResult.Failed && runAttemptCount < 5) Result.retry() else Result.success()
     }
 }
+
+/** Keeps the insights history filled, whether or not Nessa manages sleep. */
+object HistoryScheduling {
+    fun start(context: Context) {
+        val online = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        val work = WorkManager.getInstance(context)
+        work.enqueueUniquePeriodicWork(
+            "nessa-history", ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<HistorySyncWorker>(15, TimeUnit.MINUTES).setConstraints(online).build(),
+        )
+        work.enqueueUniqueWork(
+            "nessa-history-now", ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<HistorySyncWorker>().setConstraints(online).build(),
+        )
+    }
+}
+
+class HistorySyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val problem = (applicationContext as NessaApp).container.historySync.sync()
+        android.util.Log.i("NessaHistory", if (problem == null) "history synced" else "history sync failed: $problem")
+        return if (problem != null && runAttemptCount < 3) Result.retry() else Result.success()
+    }
+}

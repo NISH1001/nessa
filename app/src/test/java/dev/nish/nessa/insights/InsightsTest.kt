@@ -65,6 +65,12 @@ class InsightsTest {
         assertEquals(6, v.today)
     }
 
+    @Test fun `days with cleanings but no recorded visit don't pull usual down`() {
+        // Whisker misses visits, so a day with only cleanings is a gap in the record, not a zero.
+        val acts = history(10, perDay = 3) + history(25, perDay = 0).filter { it.at < at(today.minusDays(10), 0) }
+        assertEquals(3.0, build(acts).visits.usual!!, 0.001)
+    }
+
     @Test fun `range changes the bars but not usual or busy`() {
         val acts = history(60, perDay = 2) + (0 until 5).map { visit(today, 6 + it * 2) }
         val week = build(acts, range = Range.Week).visits
@@ -202,7 +208,7 @@ class InsightsTest {
 
     @Test fun `robot flag for a safety stop or many interruptions`() {
         val stop = history(20) + visit(today, 8) + event("PINCH_FAULT", today.minusDays(1), 10)
-        assertEquals("1 safety stops this week", build(stop).health.items.first { it.check == Check.Robot }.text)
+        assertEquals("1 safety stop this week", build(stop).health.items.first { it.check == Check.Robot }.text)
         val interrupts = history(20) + visit(today, 8) + (1..3).map { event("CYCLE_INTERRUPTED", today.minusDays(it.toLong()), 10) }
         assertEquals("3 cleanings interrupted this week", build(interrupts).health.items.first { it.check == Check.Robot }.text)
     }

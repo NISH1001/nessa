@@ -17,6 +17,7 @@ class NessaApp : Application() {
         container = AppContainer(this)
         // Load the saved Whisker sign-in right away so every screen knows whether we're connected.
         appScope.launch { container.session.restore() }
+        dev.nish.nessa.schedule.HistoryScheduling.start(this)
         // Re-arm the schedule checks in case the app was updated or force-stopped.
         appScope.launch {
             container.presence.load()

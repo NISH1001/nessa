@@ -111,7 +111,8 @@ fun buildInsights(
 
     // --- visits ---
     val visitsByDay = visits.groupingBy(::dayOf).eachCount()
-    val usualVisits = median(baselineDays.map { (visitsByDay[it] ?: 0).toDouble() })
+    // Only days with a recorded visit: Whisker misses visits, so a day with only cleanings isn't a real zero.
+    val usualVisits = median(baselineDays.mapNotNull { visitsByDay[it]?.toDouble() })
     fun busy(d: LocalDate) = usualVisits != null && usualVisits > 0 && (visitsByDay[d] ?: 0) >= BUSY_FACTOR * usualVisits
     val cleanings = acts.filter { it.type == CLEANED }
 
@@ -203,7 +204,7 @@ fun buildInsights(
         }
 
         items += when {
-            robot.safetyStopsWeek > 0 -> HealthItem(Check.Robot, false, "${robot.safetyStopsWeek} safety stops this week")
+            robot.safetyStopsWeek > 0 -> HealthItem(Check.Robot, false, "${robot.safetyStopsWeek} safety ${if (robot.safetyStopsWeek == 1) "stop" else "stops"} this week")
             robot.interruptedWeek > MAX_INTERRUPTIONS -> HealthItem(Check.Robot, false, "${robot.interruptedWeek} cleanings interrupted this week")
             else -> HealthItem(Check.Robot, true, "Robot running smoothly")
         }

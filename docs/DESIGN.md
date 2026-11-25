@@ -195,7 +195,8 @@ Wording is observational ("Visits above usual"), never a diagnosis. Thresholds a
 place so they can be tuned.
 
 **"Usual" is a fixed baseline, not the selected range** (designer's call): the median over the 30 days
-before today, counting only days with data. Health watch, the amber bars and the dashed "usual" lines
+before today, counting only days with data (for visits: days with at least one recorded visit, since
+Whisker misses visits and a cleaning-only day isn't a real zero). Health watch, the amber bars and the dashed "usual" lines
 all use it, so switching the range never turns a flag or an amber bar on or off. The range only
 changes how much history the charts show.
 

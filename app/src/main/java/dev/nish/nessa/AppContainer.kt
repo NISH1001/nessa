@@ -9,6 +9,9 @@ import dev.nish.nessa.data.KeystoreSecretStore
 import dev.nish.nessa.data.LitterRepository
 import dev.nish.nessa.data.RobotChoiceStore
 import dev.nish.nessa.data.SecretStore
+import dev.nish.nessa.history.HistoryStore
+import dev.nish.nessa.history.HistorySync
+import dev.nish.nessa.history.RoomHistoryStore
 import dev.nish.nessa.presence.DataStorePresenceStore
 import dev.nish.nessa.presence.PresenceEngine
 import dev.nish.nessa.schedule.ApplyResult
@@ -36,6 +39,8 @@ class AppContainer(context: Context) {
     val session = WhiskerSession(auth, secretStore)
     val api = WhiskerApi(http, userAgent = "nessa/${BuildConfig.VERSION_NAME}", invalidateToken = session::invalidate, idToken = session::idToken)
     val litter = LitterRepository(api, session, robotChoice)
+    val history: HistoryStore = RoomHistoryStore(appContext)
+    val historySync = HistorySync(api, robotChoice, history)
     val actions = ActionLog(appContext)
     val presence: PresenceEngine = PresenceEngine(DataStorePresenceStore(appContext), onNote = { actions.add(it) }) {
         // Home or away just changed. Update the robot in a background job: that keeps the phone awake
