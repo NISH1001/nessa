@@ -2,6 +2,10 @@ package dev.nish.nessa.ui.litter
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -151,14 +155,18 @@ private fun InfoCard(title: String, body: String) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
     val manager = appContainer().manager
     val managing by manager.state.collectAsStateWithLifecycle()
     val managerStatus by manager.status.collectAsStateWithLifecycle()
-    val decision = managerStatus.decision.takeIf { managing.enabled }
+    val decision = managerStatus.decision.takeIf { managing.needsChecks }
     val status = litterStatusUi(s.robot, Instant.now(), reason = decision?.detail(), shouldRest = decision?.rest)
     val cleaning by vm.cleaning.collectAsStateWithLifecycle()
+    val schedule = scheduleViewModel()
+    val scheduleBusy by schedule.busy.collectAsStateWithLifecycle()
+    var pickSleep by rememberSaveable { mutableStateOf(false) }
     val message by vm.message.collectAsStateWithLifecycle()
     var confirmClean by rememberSaveable { mutableStateOf(false) }
     var showDetails by rememberSaveable { mutableStateOf(false) }
@@ -175,7 +183,7 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
     StatusCard(s.robot.name ?: "Litter-Robot", status.headline, status.detail, status.tone) {
         run {
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(
                     onClick = { confirmClean = true },
                     enabled = !cleaning && status.tone != Tone.Offline && status.headline != "Off",
@@ -184,10 +192,21 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
                     Spacer(Modifier.size(8.dp))
                     Text(if (cleaning) "Starting…" else "Clean now")
                 }
-                message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                val sleepingNow = managing.sleepNow != null
+                FilledTonalButton(
+                    onClick = { if (sleepingNow) schedule.endSleepNow() else pickSleep = true },
+                    enabled = !scheduleBusy && status.tone != Tone.Offline,
+                ) {
+                    Icon(if (sleepingNow) Icons.Rounded.WbSunny else Icons.Rounded.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text(if (sleepingNow) "Wake now" else "Sleep now")
+                }
             }
+            message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         }
     }
+
+    if (pickSleep) SleepNowDialog(onDismiss = { pickSleep = false }, onSleep = { hours -> pickSleep = false; schedule.sleepNow(hours) })
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -248,4 +267,29 @@ private fun DetailRow(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+/** Pick how long "Sleep now" lasts. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SleepNowDialog(onDismiss: () -> Unit, onSleep: (Int?) -> Unit) {
+    var choice by rememberSaveable { mutableStateOf<Int?>(12) }
+    var forever by rememberSaveable { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sleep for…") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(1, 2, 4, 8, 12).forEach { h ->
+                        FilterChip(selected = !forever && choice == h, onClick = { forever = false; choice = h }, label = { Text("$h h") })
+                    }
+                }
+                FilterChip(selected = forever, onClick = { forever = true }, label = { Text("Until I wake it") })
+                Text("Ignores presence and the schedule until then.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSleep(if (forever) null else choice) }) { Text("Sleep") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

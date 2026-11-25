@@ -284,6 +284,13 @@ control looks, the empty and "collecting data" states.
   in the app's local database and is the source of truth. Before *every* write to the robot, Nessa saves
   a snapshot of the schedule the robot had. The first snapshot (the schedule found at first connect) is
   kept forever as "original". Settings → Schedule → History lists snapshots with a "Restore" button.
+- **Sleep now** (Litter tab, next to Clean now): sleep for 1, 2, 4, 8 or 12 h (default 12) or until
+  woken. Overrides presence, the schedule and Bedtime. Done the same way as Away: every day written as
+  `{isEnabled: true, 0, 0}`; an exact alarm at the end puts the rule back. If the phone is off or
+  offline at the end, the robot stays asleep until it is back. Works with Manage sleep off too: the
+  robot's schedule from before is saved and put back when it ends. **Wake now** ends it early.
+- **Power off** (planned, not built): same picker, `POWER_OFF` / `POWER_ON`. Needs a supervised test
+  that a remotely powered-off EVO still accepts `POWER_ON`.
 - **"When I'm away" setting (Settings → Presence):** choose **Sleep** (default: no cleaning, visits and
   weights still recorded) or **Power off** (nothing runs, nothing is recorded). Sleep windows at home
   always use sleep. The long-absence power-off below works on top of either choice.

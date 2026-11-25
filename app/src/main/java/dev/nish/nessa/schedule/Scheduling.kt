@@ -109,7 +109,7 @@ class ApplyWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val result = manager.apply()
         android.util.Log.i("NessaPresence", "apply result $result problem=${manager.status.value.problem}")
         (applicationContext as NessaApp).container.litter.refresh()
-        Scheduling.sync(applicationContext, manager.state.value.enabled, manager.status.value.nextCheckAt)
+        Scheduling.sync(applicationContext, manager.state.value.needsChecks, manager.status.value.nextCheckAt)
         return if (result == ApplyResult.Failed && runAttemptCount < 5) Result.retry() else Result.success()
     }
 }

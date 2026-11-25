@@ -27,6 +27,14 @@ import java.time.temporal.ChronoUnit
 /** A copy of the schedule the robot had just before Nessa changed it. */
 @Serializable data class Checkpoint(val atEpochSec: Long, val entries: List<SleepEntry>)
 
+/**
+ * "Sleep now": the robot sleeps until [untilEpochSec] (null = until woken), ignoring presence and the
+ * schedule. [restoreTo] is the robot's schedule from before, put back afterwards when Nessa isn't
+ * otherwise managing sleep.
+ */
+@Serializable
+data class SleepNow(val untilEpochSec: Long?, val restoreTo: List<SleepEntry>? = null)
+
 @Serializable
 data class ManagerState(
     /** The master switch. While false Nessa never changes anything on the robot. */
@@ -37,7 +45,11 @@ data class ManagerState(
     /** The robot's schedule from before Nessa ever touched it. Written once. */
     val original: List<SleepEntry>? = null,
     val checkpoints: List<Checkpoint> = emptyList(),
-)
+    val sleepNow: SleepNow? = null,
+) {
+    /** Whether background checks are needed: sleep management is on, or a Sleep now is running. */
+    val needsChecks: Boolean get() = enabled || sleepNow != null
+}
 
 interface ManagerStore {
     suspend fun load(): ManagerState
@@ -104,6 +116,39 @@ class LitterManager(
         }
     }
 
+    /** Sleep right away for [hours], or until woken when null. Overrides presence and the schedule. */
+    suspend fun sleepNow(hours: Int?): ApplyResult = mutex.withLock {
+        ensureLoaded()
+        val until = hours?.let { now().plusSeconds(it * 3600L).epochSecond }
+        onNote(if (hours == null) "Sleep now until you wake it" else "Sleep now for $hours h")
+        save(_state.value.copy(sleepNow = SleepNow(until, _state.value.sleepNow?.restoreTo)))
+        applyLocked()
+    }
+
+    /** End a Sleep now early. */
+    suspend fun endSleepNow(): ApplyResult = mutex.withLock {
+        ensureLoaded()
+        val hold = _state.value.sleepNow ?: return@withLock applyLocked()
+        onNote("You ended Sleep now")
+        finishSleepNow(hold)
+    }
+
+    /** Clears the hold, then either applies the rule or, if Nessa isn't managing sleep, puts the old schedule back. */
+    private suspend fun finishSleepNow(hold: SleepNow): ApplyResult {
+        save(_state.value.copy(sleepNow = null))
+        if (_state.value.enabled) return applyLocked()
+        val restore = hold.restoreTo ?: return ApplyResult.Off.also { _status.value = ManagerStatus() }
+        return try {
+            val robot = pickRobot(api.robots(), choice.load()) ?: return fail("No Litter-Robot found on this account")
+            val result = write(robot.serial, robot.sleepSchedules, restore, expectResting = null)
+            _status.value = ManagerStatus(problem = result.second)
+            onEvent(result.first, null, result.second)
+            result.first
+        } catch (e: WhiskerException) {
+            fail(e.plainText())
+        }
+    }
+
     /** Brings the robot in line with the rule. Safe to call any time; does nothing if already right. */
     suspend fun apply(): ApplyResult = mutex.withLock {
         ensureLoaded()
@@ -119,7 +164,14 @@ class LitterManager(
     }
 
     private suspend fun applyLocked(): ApplyResult {
+        _state.value.sleepNow?.let { hold ->
+            if (hold.untilEpochSec != null && now().epochSecond >= hold.untilEpochSec) {
+                onNote("Sleep now ended")
+                return finishSleepNow(hold)
+            }
+        }
         val s = _state.value
+        if (s.sleepNow != null) return applySleepNowLocked(s.sleepNow)
         if (!s.enabled) {
             _status.value = ManagerStatus()
             return ApplyResult.Off
@@ -153,6 +205,34 @@ class LitterManager(
             onEvent(ApplyResult.Failed, null, e.plainText())
             fail(e.plainText())
         }
+    }
+
+    private suspend fun applySleepNowLocked(hold: SleepNow): ApplyResult = try {
+        val robot = pickRobot(api.robots(), choice.load()) ?: return fail("No Litter-Robot found on this account")
+        val zone = runCatching { ZoneId.of(robot.timezone!!) }.getOrDefault(ZoneId.systemDefault())
+        if (!_state.value.enabled && hold.restoreTo == null) {
+            save(_state.value.copy(sleepNow = hold.copy(restoreTo = robot.sleepSchedules.sortedBy { it.dayOfWeek })))
+        }
+        val decision = Decision(true, Reason.SleepNow, hold.untilEpochSec?.let { untilText(Instant.ofEpochSecond(it), zone) } ?: "until you wake it")
+        val result = write(robot.serial, robot.sleepSchedules, (0..6).map { SleepEntry(it, true, 0, 0) }, expectResting = true)
+        _status.value = ManagerStatus(
+            decision = decision,
+            problem = result.second,
+            nextCheckAt = hold.untilEpochSec?.let(Instant::ofEpochSecond),
+            lastAppliedAt = if (result.first == ApplyResult.Failed) _status.value.lastAppliedAt else now(),
+        )
+        onEvent(result.first, decision, result.second)
+        result.first
+    } catch (e: WhiskerException) {
+        onEvent(ApplyResult.Failed, null, e.plainText())
+        fail(e.plainText())
+    }
+
+    private fun untilText(at: Instant, zone: ZoneId): String {
+        val local = at.atZone(zone)
+        val sameDay = local.toLocalDate() == now().atZone(zone).toLocalDate()
+        val time = java.time.format.DateTimeFormatter.ofPattern(if (sameDay) "h:mm a" else "EEE h:mm a", java.util.Locale.US).format(local)
+        return "until $time"
     }
 
     private suspend fun restoreOriginalLocked(): ApplyResult {

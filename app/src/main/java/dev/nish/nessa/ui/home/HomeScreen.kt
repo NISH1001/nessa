@@ -66,7 +66,7 @@ fun HomeScreen(onOpenLitter: () -> Unit) {
                 val manager = appContainer().manager
                 val managing by manager.state.collectAsStateWithLifecycle()
                 val managerStatus by manager.status.collectAsStateWithLifecycle()
-                val decision = managerStatus.decision.takeIf { managing.enabled }
+                val decision = managerStatus.decision.takeIf { managing.needsChecks }
                 // The "You" card above already says home or away, so only show reasons that add something (Bedtime, Work).
                 val reason = decision?.takeIf { it.reason != Reason.HomeFree && it.reason != Reason.Away }?.detail()
                 val status = litterStatusUi(s.robot, Instant.now(), reason = reason, shouldRest = decision?.rest)

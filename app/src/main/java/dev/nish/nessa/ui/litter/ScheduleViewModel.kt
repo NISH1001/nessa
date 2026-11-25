@@ -29,6 +29,8 @@ class ScheduleViewModel(app: Application, private val manager: LitterManager, pr
     fun setEnabled(on: Boolean) = act { manager.setEnabled(on) }
     fun setOverride(o: Override) = act { manager.setOverride(o) }
     fun check() = act { manager.apply() }
+    fun sleepNow(hours: Int?) = act { manager.sleepNow(hours) }
+    fun endSleepNow() = act { manager.endSleepNow() }
 
     fun saveWindow(dow: Int, window: Window) = editDay(dow) { day ->
         if (day.any { it.id == window.id }) day.map { if (it.id == window.id) window else it } else day + window
@@ -47,7 +49,7 @@ class ScheduleViewModel(app: Application, private val manager: LitterManager, pr
         _busy.value = true
         try {
             val result = block()
-            Scheduling.sync(getApplication(), manager.state.value.enabled, manager.status.value.nextCheckAt)
+            Scheduling.sync(getApplication(), manager.state.value.needsChecks, manager.status.value.nextCheckAt)
             if (result == ApplyResult.Applied) onRobotChanged()
         } finally {
             _busy.value = false

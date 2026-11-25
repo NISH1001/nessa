@@ -226,4 +226,73 @@ class LitterManagerTest {
         manager.setEnabled(false)
         assertEquals(listOf("Sleep management on", "Schedule changed", "Sleep management off"), notes)
     }
+
+    // --- Sleep now -----------------------------------------------------------------------
+
+    private val allDay = (0..6).map { SleepEntry(it, true, 0, 0) }
+
+    @Test fun `sleep now writes a whole-day sleep and overrides home`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, override = Override.Home)
+        server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true))
+        server.enqueue(MockResponse().setBody("{}")); server.enqueue(robot(allDay, sleeping = true))
+        assertEquals(ApplyResult.Applied, manager.sleepNow(hours = 12))
+        val d = manager.status.value.decision!!
+        assertTrue(d.rest)
+        assertEquals(Reason.SleepNow, d.reason)
+        assertEquals("until 10:00 PM", d.windowName) // 10:00 + 12 h, robot's time
+        assertEquals(now.plusSeconds(12 * 3600), manager.status.value.nextCheckAt)
+        assertEquals(listOf("Sleep now for 12 h"), notes)
+    }
+
+    @Test fun `sleep now until woken has no end`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault)
+        server.enqueue(tokens()); server.enqueue(robot(allDay, sleeping = true, array = true))
+        assertEquals(ApplyResult.AlreadyRight, manager.sleepNow(hours = null))
+        assertEquals("until you wake it", manager.status.value.decision!!.windowName)
+        assertNull(manager.state.value.sleepNow!!.untilEpochSec)
+        assertEquals(listOf("Sleep now until you wake it"), notes)
+    }
+
+    @Test fun `when sleep now runs out the normal rule comes back`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, sleepNow = SleepNow(untilEpochSec = now.epochSecond - 60))
+        server.enqueue(tokens()); server.enqueue(robot(allDay, sleeping = true, array = true))
+        server.enqueue(MockResponse().setBody("{}")); server.enqueue(robot(desiredNow(), sleeping = true))
+        assertEquals(ApplyResult.Applied, manager.apply())
+        assertNull(manager.state.value.sleepNow)
+        assertEquals(Reason.Window, manager.status.value.decision!!.reason)
+        assertEquals(listOf("Sleep now ended"), notes)
+    }
+
+    @Test fun `waking early ends sleep now and applies the rule`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, override = Override.Home, sleepNow = SleepNow(untilEpochSec = null))
+        val home = nativeWeek(WeekSchedule.default(), Presence.Home, 1, 600)
+        server.enqueue(tokens()); server.enqueue(robot(allDay, sleeping = true, array = true))
+        server.enqueue(MockResponse().setBody("{}")); server.enqueue(robot(home, sleeping = false))
+        assertEquals(ApplyResult.Applied, manager.endSleepNow())
+        assertNull(manager.state.value.sleepNow)
+        assertFalse(manager.status.value.decision!!.rest)
+        assertEquals(listOf("You ended Sleep now"), notes)
+    }
+
+    @Test fun `sleep now works with sleep management off and puts the old schedule back after`() = runBlocking {
+        store.saved = ManagerState(enabled = false)
+        server.enqueue(tokens()); server.enqueue(robot(whiskerDefault, array = true))
+        server.enqueue(MockResponse().setBody("{}")); server.enqueue(robot(allDay, sleeping = true))
+        assertEquals(ApplyResult.Applied, manager.sleepNow(hours = 2))
+        assertEquals(whiskerDefault, manager.state.value.sleepNow!!.restoreTo)
+
+        server.enqueue(robot(allDay, sleeping = true, array = true))
+        server.enqueue(MockResponse().setBody("{}")); server.enqueue(robot(whiskerDefault))
+        assertEquals(ApplyResult.Applied, manager.endSleepNow())
+        val patch = requests().last { it.method == "PATCH" }
+        assertTrue(patch.body.readUtf8().contains("\"sleepTime\":480"))
+        assertNull(manager.state.value.sleepNow)
+        assertFalse(store.saved.enabled)
+    }
+
+    @Test fun `checks keep running while sleep now is on even with management off`() {
+        assertTrue(ManagerState(enabled = false, sleepNow = SleepNow(null)).needsChecks)
+        assertFalse(ManagerState(enabled = false).needsChecks)
+        assertTrue(ManagerState(enabled = true).needsChecks)
+    }
 }

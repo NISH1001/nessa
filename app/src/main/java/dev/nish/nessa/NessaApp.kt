@@ -25,7 +25,7 @@ class NessaApp : Application() {
         }
         appScope.launch {
             container.manager.load()
-            if (container.manager.state.value.enabled) dev.nish.nessa.schedule.Scheduling.applySoon(this@NessaApp)
+            if (container.manager.state.value.needsChecks) dev.nish.nessa.schedule.Scheduling.applySoon(this@NessaApp)
         }
     }
 }

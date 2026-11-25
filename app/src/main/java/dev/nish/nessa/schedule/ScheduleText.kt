@@ -23,4 +23,5 @@ fun Decision.detail(): String = when (reason) {
     Reason.HomeOverridesWindow -> "Home · $windowName skipped"
     Reason.HomeFree -> "Home"
     Reason.NoWindow -> "No sleep window"
+    Reason.SleepNow -> "Sleep now · ${windowName ?: ""}".trimEnd(' ', '·')
 }

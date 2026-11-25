@@ -82,7 +82,7 @@ class PresenceService : Service() {
                     Presence.Away -> "Away"
                     Presence.Unknown -> "Unknown"
                 }
-                val robot = status.decision?.takeIf { managing.enabled }?.let { " · Litter ${it.title().lowercase()}" }.orEmpty()
+                val robot = status.decision?.takeIf { managing.needsChecks }?.let { " · Litter ${it.title().lowercase()}" }.orEmpty()
                 val text = if (p.awayAt != null) "Home · away in" else who + robot
                 getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text, countdownTo = p.awayAt))
             }

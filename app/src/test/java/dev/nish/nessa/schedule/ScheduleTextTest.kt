@@ -26,4 +26,8 @@ class ScheduleTextTest {
         assertEquals("Active" to "Home", both(Decision(false, Reason.HomeFree, null)))
         assertEquals("Active" to "No sleep window", both(Decision(false, Reason.NoWindow, null)))
     }
+
+    @Test fun `sleep now reads with its end`() {
+        assertEquals("Sleeping" to "Sleep now · until 9:30 AM", Decision(true, Reason.SleepNow, "until 9:30 AM").let { it.title() to it.detail() })
+    }
 }
