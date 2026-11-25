@@ -100,7 +100,7 @@ fun buildInsights(
     val baselineDays = daysWithData.filter(::inBaseline)
 
     // --- weight ---
-    val weightWindow = visits.filter { it.weightLb != null && dayOf(it) >= baselineStart }
+    val weightWindow = visits.filter { it.weightLb != null && inBaseline(dayOf(it)) }
     val anchor = median(weightWindow.filter { (it.durationSec ?: 0) > RELIABLE_VISIT_SEC }.map { it.weightLb!! })
     val usualLb = anchor?.let { a -> median(weightWindow.map { it.weightLb!! }.filter { abs(it - a) / a <= OUTLIER }) }
     fun isOutlier(lb: Double) = usualLb != null && abs(lb - usualLb) / usualLb > OUTLIER
@@ -194,13 +194,14 @@ fun buildInsights(
         val sinceVisit = lastVisit?.let { Duration.between(it, now) }
         val dayAgo = now.minus(Duration.ofHours(NO_VISIT_HOURS))
         val recentReadings = readings.filter { it.at >= dayAgo }
-        val mostlyAwake = recentReadings.isNotEmpty() &&
-            recentReadings.count { it.sleeping == false && it.powerOn != false } * 2 >= recentReadings.size
+        // Only a robot known to have been asleep or off explains a quiet day. No status is not an excuse.
+        val mostlyResting = recentReadings.isNotEmpty() &&
+            recentReadings.count { it.sleeping == true || it.powerOn == false } * 2 > recentReadings.size
         items += when {
-            sinceVisit != null && sinceVisit.toHours() >= NO_VISIT_HOURS && mostlyAwake ->
-                HealthItem(Check.NoVisits, false, "No visits for ${sinceVisit.toHours()} h")
             sinceVisit != null && sinceVisit.toHours() < NO_VISIT_HOURS -> HealthItem(Check.NoVisits, true, "Visited in the last 24 h")
-            else -> HealthItem(Check.NoVisits, true, "No recent visits · box was resting")
+            mostlyResting -> HealthItem(Check.NoVisits, true, "No recent visits · box was resting")
+            sinceVisit != null -> HealthItem(Check.NoVisits, false, "No visits for ${sinceVisit.toHours()} h")
+            else -> HealthItem(Check.NoVisits, false, "No visits recorded")
         }
 
         items += when {

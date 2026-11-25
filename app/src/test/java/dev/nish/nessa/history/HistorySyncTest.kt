@@ -16,13 +16,14 @@ import java.time.Instant
 class HistorySyncTest {
     private lateinit var server: MockWebServer
     private val store = FakeHistoryStore()
+    private val progress = FakeSyncProgress()
     private val now = Instant.parse("2026-01-10T12:00:00Z")
     private lateinit var sync: HistorySync
 
     @Before fun setUp() {
         server = MockWebServer().apply { start() }
         val api = WhiskerApi(OkHttpClient(), server.url("/").toString(), "t") { "tok" }
-        sync = HistorySync(api, FakeRobotChoiceStore(), store) { now }
+        sync = HistorySync(api, FakeRobotChoiceStore(), store, progress) { now }
     }
 
     @After fun tearDown() { runCatching { server.shutdown() } }
@@ -42,14 +43,6 @@ class HistorySyncTest {
         server.enqueue(robots); server.enqueue(page(0, 100)); server.enqueue(page(100, 100)); server.enqueue(page(200, 30))
         assertNull(sync.sync())
         assertEquals(230, store.activities.value.size)
-    }
-
-    @Test fun `later sync stops at the first page it already has`() = runBlocking {
-        server.enqueue(robots); server.enqueue(page(0, 100)); server.enqueue(page(100, 20))
-        sync.sync()
-        server.enqueue(robots); server.enqueue(page(0, 100))
-        assertNull(sync.sync())
-        assertEquals(5, server.requestCount) // 3 for the first sync, then the robot and one page
     }
 
     @Test fun `resync stores nothing twice`() = runBlocking {
@@ -85,4 +78,29 @@ class HistorySyncTest {
         server.enqueue(MockResponse().setBody("[]"))
         assertEquals("No Litter-Robot found on this account", sync.sync())
     }
+
+    @Test fun `a first sync cut off midway carries on with older pages next time`() = runBlocking {
+        server.enqueue(robots); server.enqueue(page(0, 100)); server.enqueue(page(100, 100)); server.enqueue(MockResponse().setResponseCode(500))
+        sync.sync()
+        assertEquals(200, store.activities.value.size)
+        // Next time: page 1 and 2 are already stored, but older history is still missing.
+        server.enqueue(robots); server.enqueue(page(0, 100)); server.enqueue(page(100, 100)); server.enqueue(page(200, 40))
+        assertNull(sync.sync())
+        assertEquals(240, store.activities.value.size)
+        assertEquals(true, progress.done)
+    }
+
+    @Test fun `once caught up, a sync stops at the first page with nothing new`() = runBlocking {
+        progress.done = true
+        server.enqueue(robots); server.enqueue(page(0, 100)); server.enqueue(page(100, 100))
+        sync.sync()
+        server.enqueue(robots); server.enqueue(page(0, 100))
+        sync.sync()
+        assertEquals(5, server.requestCount)
+    }
+}
+
+class FakeSyncProgress(var done: Boolean = false) : SyncProgress {
+    override suspend fun backfillDone() = done
+    override suspend fun markBackfillDone() { done = true }
 }

@@ -1,7 +1,7 @@
 package dev.nish.nessa.ui.insights
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -90,7 +90,7 @@ fun DotChart(
                 .pointerInput(dots) {
                     fun pick(o: Offset) {
                         val left = LEFT.toPx()
-                        val w = size.width - left
+                        val w = size.width - left - 6.dp.toPx()
                         val h = size.height - BOTTOM.toPx() - TOP.toPx()
                         selected = dots.indices.minByOrNull { i ->
                             val d = dots[i]
@@ -102,9 +102,9 @@ fun DotChart(
                     detectTapGestures { pick(it) }
                 }
                 .pointerInput(dots) {
-                    detectDragGestures { change, _ ->
+                    detectHorizontalDragGestures { change, _ ->
                         val left = LEFT.toPx()
-                        val x = ((change.position.x - left) / (size.width - left)).coerceIn(0f, 1f)
+                        val x = ((change.position.x - left) / (size.width - left - 6.dp.toPx())).coerceIn(0f, 1f)
                         selected = dots.indices.minByOrNull { abs(dots[it].x - x) }
                     }
                 },
@@ -155,7 +155,7 @@ fun BarChart(
                     detectTapGestures { pick(it.x) }
                 }
                 .pointerInput(bars) {
-                    detectDragGestures { change, _ ->
+                    detectHorizontalDragGestures { change, _ ->
                         val left = LEFT.toPx()
                         if (bars.isNotEmpty()) selected = (((change.position.x - left) / (size.width - left)) * bars.size).toInt().coerceIn(0, bars.size - 1)
                     }
@@ -197,7 +197,7 @@ fun HourStrip(counts: IntArray, colors: ChartColors) {
         Canvas(
             Modifier.fillMaxWidth().height(50.dp)
                 .pointerInput(counts) { detectTapGestures { selected = (it.x / size.width * 24).toInt().coerceIn(0, 23) } }
-                .pointerInput(counts) { detectDragGestures { c, _ -> selected = (c.position.x / size.width * 24).toInt().coerceIn(0, 23) } },
+                .pointerInput(counts) { detectHorizontalDragGestures { c, _ -> selected = (c.position.x / size.width * 24).toInt().coerceIn(0, 23) } },
         ) {
             val cell = size.width / 24
             val h = 28.dp.toPx()

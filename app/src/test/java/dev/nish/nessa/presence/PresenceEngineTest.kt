@@ -20,7 +20,7 @@ class PresenceEngineTest {
     private val store = FakePresenceStore(PresenceConfig(enabled = true, homeWifi = setOf("HomeNet"), awayAfterMin = 5))
     private val changes = mutableListOf<Presence>()
     private val notes = mutableListOf<String>()
-    private val engine = PresenceEngine(store, now = { now }, onNote = { notes += it }, onChanged = { changes += it })
+    private val engine = PresenceEngine(store, now = { now }, onNote = { notes += it }, onChanged = { _, to -> changes += to })
 
     @Test fun `starts unknown and becomes home on home wifi`() = runBlocking {
         engine.load()
@@ -57,7 +57,7 @@ class PresenceEngineTest {
         engine.load()
         engine.onWifi(WifiReading.Connected("HomeNet"))
         engine.onWifi(WifiReading.NotOnWifi)
-        val restarted = PresenceEngine(store, now = { now }, onChanged = { })
+        val restarted = PresenceEngine(store, now = { now }, onChanged = { _, _ -> })
         restarted.load()
         assertEquals(Presence.Home, restarted.current)
         assertEquals(now.plusSeconds(300), restarted.state.value.awayAt)

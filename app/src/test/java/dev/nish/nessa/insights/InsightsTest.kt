@@ -169,7 +169,7 @@ class InsightsTest {
 
     @Test fun `health watch learns until 14 days with data`() {
         assertTrue(build(history(13)).health.learning)
-        val h = build(history(14)).health
+        val h = build(history(14) + visit(today, 8)).health
         assertFalse(h.learning)
         assertEquals(listOf(Check.Weight, Check.Visits, Check.NoVisits, Check.Robot), h.items.map { it.check })
         assertTrue(h.items.all { it.ok })
@@ -204,6 +204,17 @@ class InsightsTest {
         assertTrue(item.text.startsWith("No visits for "))
         val asleep = (0..23).map { RobotReading(now.minusSeconds(it * 3600L), 10, null, null, true, true, 1) }
         assertTrue(build(acts, asleep).health.items.first { it.check == Check.NoVisits }.ok)
+    }
+
+    @Test fun `no visits is flagged when there is no robot status to explain it`() {
+        val acts = history(20).filter { it.at < at(today.minusDays(1), 12) }
+        assertFalse(build(acts).health.items.first { it.check == Check.NoVisits }.ok)
+    }
+
+    @Test fun `weight usual leaves today out`() {
+        // Today's readings alone can't move the usual weight.
+        val acts = history(20, lb = 8.0) + (0 until 30).map { visit(today, 0, it, lb = 9.0) }
+        assertEquals(8.0, build(acts).weight.usualLb!!, 0.001)
     }
 
     @Test fun `robot flag for a safety stop or many interruptions`() {

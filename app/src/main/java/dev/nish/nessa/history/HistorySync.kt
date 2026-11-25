@@ -21,10 +21,17 @@ fun Robot.toReading(at: Instant) = RobotReading(
 )
 
 /** Copies Whisker's history into the phone's database, newest first, stopping where it caught up. */
+/** Remembers whether the first full copy of Whisker's history has finished. */
+interface SyncProgress {
+    suspend fun backfillDone(): Boolean
+    suspend fun markBackfillDone()
+}
+
 class HistorySync(
     private val api: WhiskerApi,
     private val choice: RobotChoiceStore,
     private val store: HistoryStore,
+    private val progress: SyncProgress,
     private val now: () -> Instant = Instant::now,
 ) {
     private val mutex = Mutex()
@@ -34,15 +41,19 @@ class HistorySync(
         try {
             val robot = pickRobot(api.robots(), choice.load()) ?: return@withLock "No Litter-Robot found on this account"
             store.addReading(robot.toReading(now()))
+            val caughtUp = progress.backfillDone()
             var offset = 0
+            var reachedEnd = false
             while (offset < LIMIT) {
                 val page = api.activities(robot.serial, limit = PAGE, offset = offset)
-                val rows = page.mapNotNull { it.toStored() }
-                val added = store.addActivities(rows)
+                val added = store.addActivities(page.mapNotNull { it.toStored() })
                 offset += page.size
-                // A short page is the end; a page with nothing new means the rest is already stored.
-                if (page.size < PAGE || added == 0) break
+                if (page.size < PAGE) { reachedEnd = true; break }
+                // Once the full history is in, a page with nothing new means the rest is stored too.
+                // Before that, keep going: an earlier first copy may have been cut off partway.
+                if (caughtUp && added == 0) break
             }
+            if (!caughtUp && (reachedEnd || offset >= LIMIT)) progress.markBackfillDone()
             null
         } catch (e: WhiskerException) {
             e.plainText()

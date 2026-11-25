@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
@@ -35,10 +37,14 @@ class InsightsViewModel(store: HistoryStore, litter: LitterRepository) : ViewMod
         }
     }
 
-    val model: StateFlow<InsightsModel?> = combine(store.activitiesFlow(), store.readingsFlow(), _range, litter.state, clock) { acts, readings, range, state, now ->
+    /** Only the parts of the robot that insights use, so a status refresh doesn't recompute everything. */
+    private val robotFacts = litter.state.map { state ->
         val robot = (state as? LitterState.Ready)?.robot
         val zone = robot?.let(LitterRepository::zoneOf) ?: ZoneId.systemDefault()
-        val filterDue = LitterRepository.parseInstant(robot?.nextFilterReplacementDate)?.atZone(zone)?.toLocalDate()
+        zone to LitterRepository.parseInstant(robot?.nextFilterReplacementDate)?.atZone(zone)?.toLocalDate()
+    }.distinctUntilChanged()
+
+    val model: StateFlow<InsightsModel?> = combine(store.activitiesFlow(), store.readingsFlow(), _range, robotFacts, clock) { acts, readings, range, (zone, filterDue), now ->
         buildInsights(acts, readings, range, zone, now, filterDue)
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 }

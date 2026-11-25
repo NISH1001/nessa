@@ -10,9 +10,14 @@ import org.junit.Test
 
 class ActionLogTest {
     @Test fun `presence changes read plainly`() {
-        assertEquals("You came home", presenceActionText(Presence.Home))
-        assertEquals("You left", presenceActionText(Presence.Away))
-        assertEquals("Presence unknown", presenceActionText(Presence.Unknown))
+        assertEquals("You came home", presenceActionText(Presence.Away, Presence.Home))
+        assertEquals("You left", presenceActionText(Presence.Home, Presence.Away))
+        assertEquals("Presence unknown", presenceActionText(Presence.Home, Presence.Unknown))
+    }
+
+    @Test fun `first detection after a restart or setup does not claim you came or went`() {
+        assertEquals("Detected home", presenceActionText(Presence.Unknown, Presence.Home))
+        assertEquals("Detected away", presenceActionText(Presence.Unknown, Presence.Away))
     }
 
     @Test fun `robot updates say what happened and why`() {

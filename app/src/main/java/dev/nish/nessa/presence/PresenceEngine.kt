@@ -34,7 +34,7 @@ class PresenceEngine(
     private val now: () -> Instant = Instant::now,
     /** Smaller happenings worth a line in the log: a countdown starting or being cancelled. */
     private val onNote: suspend (String) -> Unit = {},
-    private val onChanged: suspend (Presence) -> Unit,
+    private val onChanged: suspend (from: Presence, to: Presence) -> Unit,
 ) {
     private val mutex = Mutex()
     private var loaded = false
@@ -96,9 +96,9 @@ class PresenceEngine(
                 area = area,
                 currentWifi = (wifiReading as? WifiReading.Connected)?.let { cleanWifiName(it.name) },
             )
-            next.presence.takeIf { it != before }
+            next.presence.takeIf { it != before }?.let { before to it }
         }
         note?.let { onNote(it) }
-        announce?.let { onChanged(it) }
+        announce?.let { (from, to) -> onChanged(from, to) }
     }
 }

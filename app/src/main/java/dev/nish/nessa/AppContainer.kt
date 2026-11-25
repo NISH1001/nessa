@@ -9,6 +9,7 @@ import dev.nish.nessa.data.KeystoreSecretStore
 import dev.nish.nessa.data.LitterRepository
 import dev.nish.nessa.data.RobotChoiceStore
 import dev.nish.nessa.data.SecretStore
+import dev.nish.nessa.history.DataStoreSyncProgress
 import dev.nish.nessa.history.HistoryStore
 import dev.nish.nessa.history.HistorySync
 import dev.nish.nessa.history.RoomHistoryStore
@@ -40,13 +41,13 @@ class AppContainer(context: Context) {
     val api = WhiskerApi(http, userAgent = "nessa/${BuildConfig.VERSION_NAME}", invalidateToken = session::invalidate, idToken = session::idToken)
     val litter = LitterRepository(api, session, robotChoice)
     val history: HistoryStore = RoomHistoryStore(appContext)
-    val historySync = HistorySync(api, robotChoice, history)
+    val historySync = HistorySync(api, robotChoice, history, DataStoreSyncProgress(appContext))
     val actions = ActionLog(appContext)
-    val presence: PresenceEngine = PresenceEngine(DataStorePresenceStore(appContext), onNote = { actions.add(it) }) {
+    val presence: PresenceEngine = PresenceEngine(DataStorePresenceStore(appContext), onNote = { actions.add(it) }) { from, it ->
         // Home or away just changed. Update the robot in a background job: that keeps the phone awake
         // until it is done and retries by itself if there is no signal.
         android.util.Log.i("NessaPresence", "presence changed to $it")
-        actions.add(presenceActionText(it))
+        actions.add(presenceActionText(from, it))
         Scheduling.applySoon(appContext)
     }
     val manager: LitterManager = LitterManager(api, robotChoice, DataStoreManagerStore(appContext), presence = { presence.current }, onNote = { actions.add(it) }, onEvent = { result, decision, problem ->

@@ -25,10 +25,12 @@ data class ActionEntry(val atEpochSec: Long, val text: String, val ok: Boolean)
 private const val MAX_ENTRIES = 300
 private const val REPEAT_WINDOW_SEC = 30 * 60
 
-fun presenceActionText(presence: Presence): String = when (presence) {
-    Presence.Home -> "You came home"
-    Presence.Away -> "You left"
-    Presence.Unknown -> "Presence unknown"
+/** [from] matters: the first reading after setup or a restart is a detection, not an arrival. */
+fun presenceActionText(from: Presence, to: Presence): String = when {
+    to == Presence.Unknown -> "Presence unknown"
+    from == Presence.Unknown -> if (to == Presence.Home) "Detected home" else "Detected away"
+    to == Presence.Home -> "You came home"
+    else -> "You left"
 }
 
 /** What to log for a robot update, or null when nothing changed. A null [decision] means the old schedule was put back. */

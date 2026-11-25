@@ -85,7 +85,7 @@ fun InsightsSection(scroll: ScrollState) {
     VisitsCard(m, colors, Modifier.anchor(Check.Visits).anchor(Check.NoVisits))
     TimeInBoxCard(m, range, zone, colors)
     HoursCard(m, colors)
-    RobotCard(m, amber, Modifier.anchor(Check.Robot))
+    RobotCard(m, amber, zone, Modifier.anchor(Check.Robot))
 }
 
 @Composable
@@ -244,7 +244,7 @@ private fun HoursCard(m: InsightsModel, colors: ChartColors) {
 }
 
 @Composable
-private fun RobotCard(m: InsightsModel, amber: Color, modifier: Modifier) {
+private fun RobotCard(m: InsightsModel, amber: Color, zone: ZoneId, modifier: Modifier) {
     val r = m.robot
     InsightCard("Robot", modifier) {
         StatRow("Cleanings today", "${r.cleaningsToday}${r.usualCleanings?.let { " · usual ${trim(it)}" } ?: ""}")
@@ -255,7 +255,7 @@ private fun RobotCard(m: InsightsModel, amber: Color, modifier: Modifier) {
         StatRow("Interrupted this week", "${r.interruptedWeek}", warn = r.interruptedWeek > 0, amber = amber)
         StatRow("Safety stops this week", "${r.safetyStopsWeek}", warn = r.safetyStopsWeek > 0, amber = amber)
         r.filterDue?.let { due ->
-            val days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), due)
+            val days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(zone), due)
             StatRow("Filter due", when { days < 0 -> "overdue"; days == 0L -> "today"; days == 1L -> "tomorrow"; else -> "in $days days" }, warn = days <= 0, amber = amber)
         }
     }
