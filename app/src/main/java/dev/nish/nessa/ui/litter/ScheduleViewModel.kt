@@ -31,6 +31,8 @@ class ScheduleViewModel(app: Application, private val manager: LitterManager, pr
     fun check() = act { manager.apply() }
     fun sleepNow(hours: Int?) = act { manager.sleepNow(hours) }
     fun endSleepNow() = act { manager.endSleepNow() }
+    fun powerOff(hours: Int?) = act { manager.powerOff(hours) }
+    fun powerOn() = act { manager.powerOn() }
 
     fun saveWindow(dow: Int, window: Window) = editDay(dow) { day ->
         if (day.any { it.id == window.id }) day.map { if (it.id == window.id) window else it } else day + window

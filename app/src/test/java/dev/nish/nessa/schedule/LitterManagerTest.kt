@@ -51,8 +51,8 @@ class LitterManagerTest {
 
     private fun tokens() = MockResponse().setBody("""{"AuthenticationResult":{"IdToken":"id1","RefreshToken":"r1","ExpiresIn":3600}}""")
 
-    private fun robot(entries: List<SleepEntry>, sleeping: Boolean = false, array: Boolean = false): MockResponse {
-        val body = """{"serial":"LRE-TEST-0001","type":"LRE","timezone":"America/New_York","state":{"isOnline":true,"powerStatus":"On","isSleeping":$sleeping},"sleepSchedules":${WhiskerJson.encodeToString(ListSerializer(SleepEntry.serializer()), entries)}}"""
+    private fun robot(entries: List<SleepEntry>, sleeping: Boolean = false, array: Boolean = false, power: String = "On"): MockResponse {
+        val body = """{"serial":"LRE-TEST-0001","type":"LRE","timezone":"America/New_York","state":{"isOnline":true,"powerStatus":"$power","isSleeping":$sleeping},"sleepSchedules":${WhiskerJson.encodeToString(ListSerializer(SleepEntry.serializer()), entries)}}"""
         return MockResponse().setBody(if (array) "[$body]" else body)
     }
 
@@ -294,5 +294,66 @@ class LitterManagerTest {
         assertTrue(ManagerState(enabled = false, sleepNow = SleepNow(null)).needsChecks)
         assertFalse(ManagerState(enabled = false).needsChecks)
         assertTrue(ManagerState(enabled = true).needsChecks)
+    }
+
+    // --- Power off ------------------------------------------------------------------------
+
+    private fun commandsSent() = requests().filter { it.path!!.endsWith("/commands") }.map { it.body.readUtf8() }
+
+    @Test fun `power off sends the command, confirms, and holds`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault)
+        server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true))
+        server.enqueue(MockResponse().setBody("")); server.enqueue(robot(desiredNow(), power = "Off"))
+        assertEquals(ApplyResult.Applied, manager.powerOff(hours = 4))
+        assertEquals(listOf("""{"type":"POWER_OFF"}"""), commandsSent())
+        val d = manager.status.value.decision!!
+        assertEquals(Reason.PowerOff, d.reason)
+        assertEquals("until 2:00 PM", d.windowName)
+        assertEquals(now.plusSeconds(4 * 3600), manager.status.value.nextCheckAt)
+        assertEquals(listOf("Power off for 4 h"), notes)
+    }
+
+    @Test fun `while powered off nothing else is written, and no repeat command is sent`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, powerOff = PowerOff(null))
+        server.enqueue(tokens()); server.enqueue(robot(whiskerDefault, array = true, power = "Off"))
+        assertEquals(ApplyResult.AlreadyRight, manager.apply())
+        assertTrue(requests().none { it.method == "PATCH" || it.path!!.endsWith("/commands") })
+        assertEquals("until you turn it on", manager.status.value.decision!!.windowName)
+    }
+
+    @Test fun `power comes back on when the time runs out, then the rule applies`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, powerOff = PowerOff(now.epochSecond - 60))
+        server.enqueue(tokens())
+        server.enqueue(robot(desiredNow(), array = true, power = "Off"))   // power hold check
+        server.enqueue(MockResponse().setBody(""))                          // POWER_ON
+        server.enqueue(robot(desiredNow(), power = "On"))                   // confirm on
+        server.enqueue(robot(desiredNow(), array = true, sleeping = true))  // rule: already right
+        assertEquals(ApplyResult.AlreadyRight, manager.apply())
+        assertEquals(listOf("""{"type":"POWER_ON"}"""), commandsSent())
+        assertNull(manager.state.value.powerOff)
+        assertEquals(listOf("Power off ended"), notes)
+    }
+
+    @Test fun `power on early`() = runBlocking {
+        store.saved = ManagerState(enabled = false, powerOff = PowerOff(null))
+        server.enqueue(tokens()); server.enqueue(robot(whiskerDefault, array = true, power = "Off"))
+        server.enqueue(MockResponse().setBody("")); server.enqueue(robot(whiskerDefault, power = "On"))
+        assertEquals(ApplyResult.Applied, manager.powerOn())
+        assertEquals(listOf("""{"type":"POWER_ON"}"""), commandsSent())
+        assertNull(manager.state.value.powerOff)
+        assertEquals(listOf("You turned power on"), notes)
+    }
+
+    @Test fun `a robot that never reports off is a problem, and the hold is kept`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault)
+        server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true))
+        server.enqueue(MockResponse().setBody("")); repeat(12) { server.enqueue(robot(desiredNow(), power = "On")) }
+        assertEquals(ApplyResult.Failed, manager.powerOff(hours = null))
+        assertEquals("The robot didn't turn off", manager.status.value.problem)
+        assertTrue(manager.state.value.powerOff != null)
+    }
+
+    @Test fun `power off needs checks and outranks sleep now`() {
+        assertTrue(ManagerState(enabled = false, powerOff = PowerOff(null)).needsChecks)
     }
 }

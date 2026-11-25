@@ -27,7 +27,7 @@ fun litterStatusUi(robot: Robot, now: Instant, reason: String? = null, shouldRes
         // Only a robot that says it's online counts as online; silence is not good news.
         s == null || s.isOnline != true ->
             Triple("Offline", LitterRepository.parseInstant(s?.lastSeen)?.let { "Last seen ${relativeTime(it, now)}" }, Tone.Offline)
-        s.powerStatus != null && s.powerStatus != "On" -> Triple("Off", "Powered off", Tone.Off)
+        s.powerStatus != null && s.powerStatus != "On" -> Triple("Off", reason?.takeIf { shouldRest == true } ?: "Powered off", Tone.Off)
         s.isSleeping == true -> Triple("Sleeping", reason?.takeIf { shouldRest == true } ?: "Sleep mode", Tone.Resting)
         s.isDrawerFull == true -> Triple("Drawer is full", "Time to empty it", Tone.Attention)
         s.isDrawerRemoved == true -> Triple("Drawer is out", "Slide it back in", Tone.Attention)

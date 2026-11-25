@@ -167,6 +167,7 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
     val schedule = scheduleViewModel()
     val scheduleBusy by schedule.busy.collectAsStateWithLifecycle()
     var pickSleep by rememberSaveable { mutableStateOf(false) }
+    var pickPower by rememberSaveable { mutableStateOf(false) }
     val message by vm.message.collectAsStateWithLifecycle()
     var confirmClean by rememberSaveable { mutableStateOf(false) }
     var showDetails by rememberSaveable { mutableStateOf(false) }
@@ -201,12 +202,22 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
                     Spacer(Modifier.size(8.dp))
                     Text(if (sleepingNow) "Wake now" else "Sleep now")
                 }
+                val poweredOff = managing.powerOff != null
+                FilledTonalButton(
+                    onClick = { if (poweredOff) schedule.powerOn() else pickPower = true },
+                    enabled = !scheduleBusy && status.tone != Tone.Offline,
+                ) {
+                    Icon(Icons.Rounded.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(8.dp))
+                    Text(if (poweredOff) "Power on" else "Power off")
+                }
             }
             message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 
-    if (pickSleep) SleepNowDialog(onDismiss = { pickSleep = false }, onSleep = { hours -> pickSleep = false; schedule.sleepNow(hours) })
+    if (pickSleep) DurationDialog("Sleep for…", "Until I wake it", "Sleep", "Ignores presence and the schedule until then.", onDismiss = { pickSleep = false }) { hours -> pickSleep = false; schedule.sleepNow(hours) }
+    if (pickPower) DurationDialog("Power off for…", "Until I turn it on", "Power off", "Nothing is cleaned or recorded while it's off.", onDismiss = { pickPower = false }) { hours -> pickPower = false; schedule.powerOff(hours) }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -269,15 +280,15 @@ private fun DetailRow(label: String, value: String) {
     }
 }
 
-/** Pick how long "Sleep now" lasts. */
+/** Pick how long Sleep now or Power off lasts: a number of hours, or until undone (null). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SleepNowDialog(onDismiss: () -> Unit, onSleep: (Int?) -> Unit) {
-    var choice by rememberSaveable { mutableStateOf<Int?>(12) }
+private fun DurationDialog(title: String, foreverLabel: String, confirm: String, note: String, onDismiss: () -> Unit, onPick: (Int?) -> Unit) {
+    var choice by rememberSaveable { mutableStateOf(12) }
     var forever by rememberSaveable { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Sleep for…") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -285,11 +296,11 @@ private fun SleepNowDialog(onDismiss: () -> Unit, onSleep: (Int?) -> Unit) {
                         FilterChip(selected = !forever && choice == h, onClick = { forever = false; choice = h }, label = { Text("$h h") })
                     }
                 }
-                FilterChip(selected = forever, onClick = { forever = true }, label = { Text("Until I wake it") })
-                Text("Ignores presence and the schedule until then.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilterChip(selected = forever, onClick = { forever = true }, label = { Text(foreverLabel) })
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { TextButton(onClick = { onSleep(if (forever) null else choice) }) { Text("Sleep") } },
+        confirmButton = { TextButton(onClick = { onPick(if (forever) null else choice) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

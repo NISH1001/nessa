@@ -14,7 +14,11 @@ fun Window.rangeText(): String = when {
 }
 
 /** One word for what the robot is doing. */
-fun Decision.title(): String = if (rest) "Sleeping" else "Active"
+fun Decision.title(): String = when {
+    reason == Reason.PowerOff -> "Off"
+    rest -> "Sleeping"
+    else -> "Active"
+}
 
 /** The short reason, in the owner's words. */
 fun Decision.detail(): String = when (reason) {
@@ -23,5 +27,6 @@ fun Decision.detail(): String = when (reason) {
     Reason.HomeOverridesWindow -> "Home · $windowName skipped"
     Reason.HomeFree -> "Home"
     Reason.NoWindow -> "No sleep window"
+    Reason.PowerOff -> "Power off · ${windowName ?: ""}".trimEnd(' ', '·')
     Reason.SleepNow -> "Sleep now · ${windowName ?: ""}".trimEnd(' ', '·')
 }

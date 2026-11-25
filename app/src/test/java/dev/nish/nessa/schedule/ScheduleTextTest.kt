@@ -30,4 +30,8 @@ class ScheduleTextTest {
     @Test fun `sleep now reads with its end`() {
         assertEquals("Sleeping" to "Sleep now · until 9:30 AM", Decision(true, Reason.SleepNow, "until 9:30 AM").let { it.title() to it.detail() })
     }
+
+    @Test fun `power off reads as Off`() {
+        assertEquals("Off" to "Power off · until you turn it on", Decision(true, Reason.PowerOff, "until you turn it on").let { it.title() to it.detail() })
+    }
 }

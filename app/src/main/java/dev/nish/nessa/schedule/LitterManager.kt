@@ -3,6 +3,7 @@ package dev.nish.nessa.schedule
 import dev.nish.nessa.data.RobotChoiceStore
 import dev.nish.nessa.data.pickRobot
 import dev.nish.nessa.data.plainText
+import dev.nish.nessa.whisker.RobotCommand
 import dev.nish.nessa.whisker.SleepEntry
 import dev.nish.nessa.whisker.WhiskerApi
 import dev.nish.nessa.whisker.WhiskerException
@@ -35,6 +36,10 @@ import java.time.temporal.ChronoUnit
 @Serializable
 data class SleepNow(val untilEpochSec: Long?, val restoreTo: List<SleepEntry>? = null)
 
+/** "Power off": the robot is switched off until [untilEpochSec] (null = until turned on). Outranks everything. */
+@Serializable
+data class PowerOff(val untilEpochSec: Long?)
+
 @Serializable
 data class ManagerState(
     /** The master switch. While false Nessa never changes anything on the robot. */
@@ -46,9 +51,10 @@ data class ManagerState(
     val original: List<SleepEntry>? = null,
     val checkpoints: List<Checkpoint> = emptyList(),
     val sleepNow: SleepNow? = null,
+    val powerOff: PowerOff? = null,
 ) {
-    /** Whether background checks are needed: sleep management is on, or a Sleep now is running. */
-    val needsChecks: Boolean get() = enabled || sleepNow != null
+    /** Whether background checks are needed: sleep management is on, or a Sleep now or Power off is running. */
+    val needsChecks: Boolean get() = enabled || sleepNow != null || powerOff != null
 }
 
 interface ManagerStore {
@@ -116,6 +122,50 @@ class LitterManager(
         }
     }
 
+    /** Switch the robot off for [hours], or until turned on when null. Nothing else changes the robot meanwhile. */
+    suspend fun powerOff(hours: Int?): ApplyResult = mutex.withLock {
+        ensureLoaded()
+        onNote(if (hours == null) "Power off until you turn it on" else "Power off for $hours h")
+        save(_state.value.copy(powerOff = PowerOff(hours?.let { now().plusSeconds(it * 3600L).epochSecond })))
+        applyLocked()
+    }
+
+    /** Turn the robot back on early. */
+    suspend fun powerOn(): ApplyResult = mutex.withLock {
+        ensureLoaded()
+        if (_state.value.powerOff == null) return@withLock applyLocked()
+        onNote("You turned power on")
+        endPowerOffLocked()
+    }
+
+    /** Sends power on; only once the robot confirms is the hold cleared and the rule applied again. */
+    private suspend fun endPowerOffLocked(): ApplyResult {
+        val result = try {
+            setPower(on = true)
+        } catch (e: WhiskerException) {
+            return fail(e.plainText())
+        }
+        if (result == ApplyResult.Failed) return result
+        save(_state.value.copy(powerOff = null))
+        _status.value = ManagerStatus()
+        return if (_state.value.needsChecks) applyLocked() else result
+    }
+
+    /** Turns the robot on or off and waits until it says so. */
+    private var robotZone: ZoneId? = null
+
+    private suspend fun setPower(on: Boolean): ApplyResult {
+        val robot = pickRobot(api.robots(), choice.load()) ?: return fail("No Litter-Robot found on this account")
+        robotZone = runCatching { ZoneId.of(robot.timezone!!) }.getOrNull()
+        if ((robot.state?.powerStatus == "On") == on) return ApplyResult.AlreadyRight
+        api.command(robot.serial, if (on) RobotCommand.POWER_ON else RobotCommand.POWER_OFF)
+        repeat(CONFIRM_TRIES) {
+            if ((api.robot(robot.serial).state?.powerStatus == "On") == on) return ApplyResult.Applied
+            pause()
+        }
+        return fail(if (on) "The robot didn't turn on" else "The robot didn't turn off")
+    }
+
     /** Sleep right away for [hours], or until woken when null. Overrides presence and the schedule. */
     suspend fun sleepNow(hours: Int?): ApplyResult = mutex.withLock {
         ensureLoaded()
@@ -164,6 +214,14 @@ class LitterManager(
     }
 
     private suspend fun applyLocked(): ApplyResult {
+        _state.value.powerOff?.let { hold ->
+            if (hold.untilEpochSec != null && now().epochSecond >= hold.untilEpochSec) {
+                onNote("Power off ended")
+                val result = endPowerOffLocked()
+                return result
+            }
+            return applyPowerOffLocked(hold)
+        }
         _state.value.sleepNow?.let { hold ->
             if (hold.untilEpochSec != null && now().epochSecond >= hold.untilEpochSec) {
                 onNote("Sleep now ended")
@@ -205,6 +263,21 @@ class LitterManager(
             onEvent(ApplyResult.Failed, null, e.plainText())
             fail(e.plainText())
         }
+    }
+
+    private suspend fun applyPowerOffLocked(hold: PowerOff): ApplyResult = try {
+        val zone = ZoneId.systemDefault()
+        val result = setPower(on = false)
+        val decision = Decision(true, Reason.PowerOff, hold.untilEpochSec?.let { untilText(Instant.ofEpochSecond(it), robotZone ?: zone) } ?: "until you turn it on")
+        _status.value = ManagerStatus(
+            decision = decision,
+            problem = _status.value.problem.takeIf { result == ApplyResult.Failed },
+            nextCheckAt = hold.untilEpochSec?.let(Instant::ofEpochSecond),
+            lastAppliedAt = now(),
+        )
+        result
+    } catch (e: WhiskerException) {
+        fail(e.plainText())
     }
 
     private suspend fun applySleepNowLocked(hold: SleepNow): ApplyResult = try {
