@@ -27,6 +27,6 @@ fun Decision.detail(): String = when (reason) {
     Reason.HomeOverridesWindow -> "Home · $windowName skipped"
     Reason.HomeFree -> "Home"
     Reason.NoWindow -> "No sleep window"
-    Reason.PowerOff -> "Power off · ${windowName ?: ""}".trimEnd(' ', '·')
+    Reason.PowerOff -> "Powered off"
     Reason.SleepNow -> "Sleep now · ${windowName ?: ""}".trimEnd(' ', '·')
 }

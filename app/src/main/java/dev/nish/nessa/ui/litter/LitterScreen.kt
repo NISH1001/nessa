@@ -2,6 +2,25 @@ package dev.nish.nessa.ui.litter
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.FlowRow
@@ -106,11 +125,26 @@ fun Tone.icon(): ImageVector = when (this) {
 
 /** A card tinted with the state's color, with the state's icon beside the headline. */
 @Composable
-fun StatusCard(label: String, headline: String, detail: String?, tone: Tone, modifier: Modifier = Modifier, content: @Composable () -> Unit = {}) {
+fun StatusCard(
+    label: String,
+    headline: String,
+    detail: String?,
+    tone: Tone,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit = {},
+) {
     val color = tone.color()
-    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.16f).compositeOver(MaterialTheme.colorScheme.surfaceContainerHigh))) {
+    // Off is the one state where the whole card goes dark, so it reads as "switched off" at a glance.
+    val container = if (tone == Tone.Off) MaterialTheme.colorScheme.surfaceContainerLowest
+    else color.copy(alpha = 0.16f).compositeOver(MaterialTheme.colorScheme.surfaceContainerHigh)
+    val animated by animateColorAsState(container, label = "status card")
+    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = animated)) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                trailing?.invoke()
+            }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(tone.icon(), contentDescription = null, tint = color, modifier = Modifier.size(30.dp))
                 Text(headline, style = MaterialTheme.typography.displaySmall, color = color)
@@ -167,7 +201,7 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
     val schedule = scheduleViewModel()
     val scheduleBusy by schedule.busy.collectAsStateWithLifecycle()
     var pickSleep by rememberSaveable { mutableStateOf(false) }
-    var pickPower by rememberSaveable { mutableStateOf(false) }
+    var confirmPowerOff by rememberSaveable { mutableStateOf(false) }
     val message by vm.message.collectAsStateWithLifecycle()
     var confirmClean by rememberSaveable { mutableStateOf(false) }
     var showDetails by rememberSaveable { mutableStateOf(false) }
@@ -181,43 +215,54 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
         )
     }
 
-    StatusCard(s.robot.name ?: "Litter-Robot", status.headline, status.detail, status.tone) {
-        run {
-            Spacer(Modifier.height(12.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilledTonalButton(
-                    onClick = { confirmClean = true },
-                    enabled = !cleaning && status.tone != Tone.Offline && status.headline != "Off",
-                ) {
-                    Icon(Icons.Rounded.CleaningServices, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text(if (cleaning) "Starting…" else "Clean now")
-                }
-                val sleepingNow = managing.sleepNow != null
-                FilledTonalButton(
-                    onClick = { if (sleepingNow) schedule.endSleepNow() else pickSleep = true },
-                    enabled = !scheduleBusy && status.tone != Tone.Offline,
-                ) {
-                    Icon(if (sleepingNow) Icons.Rounded.WbSunny else Icons.Rounded.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text(if (sleepingNow) "Wake now" else "Sleep now")
-                }
-                val poweredOff = managing.powerOff != null
-                FilledTonalButton(
-                    onClick = { if (poweredOff) schedule.powerOn() else pickPower = true },
-                    enabled = !scheduleBusy && status.tone != Tone.Offline,
-                ) {
-                    Icon(Icons.Rounded.PowerSettingsNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text(if (poweredOff) "Power on" else "Power off")
-                }
+    val poweredOff = managing.powerOff != null
+    val sleepingNow = managing.sleepNow != null
+    val off = poweredOff || status.headline == "Off"
+    StatusCard(
+        s.robot.name ?: "Litter-Robot", status.headline, status.detail, status.tone,
+        trailing = {
+            PowerKey(
+                on = !off,
+                busy = scheduleBusy,
+                enabled = status.tone != Tone.Offline,
+                onToggle = { if (off) schedule.powerOn() else confirmPowerOff = true },
+            )
+        },
+    ) {
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FilledTonalButton(
+                onClick = { confirmClean = true },
+                enabled = !cleaning && !off && status.tone != Tone.Offline,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Rounded.CleaningServices, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(if (cleaning) "Starting…" else "Clean now", maxLines = 1)
             }
-            message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            FilledTonalButton(
+                onClick = { if (sleepingNow) schedule.endSleepNow() else pickSleep = true },
+                enabled = !scheduleBusy && !off && status.tone != Tone.Offline,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(if (sleepingNow) Icons.Rounded.WbSunny else Icons.Rounded.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(if (sleepingNow) "Wake up" else "Sleep now", maxLines = 1)
+            }
         }
+        message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     }
 
     if (pickSleep) DurationDialog("Sleep for…", "Until I wake it", "Sleep", "Ignores presence and the schedule until then.", onDismiss = { pickSleep = false }) { hours -> pickSleep = false; schedule.sleepNow(hours) }
-    if (pickPower) DurationDialog("Power off for…", "Until I turn it on", "Power off", "Nothing is cleaned or recorded while it's off.", onDismiss = { pickPower = false }) { hours -> pickPower = false; schedule.powerOff(hours) }
+    if (confirmPowerOff) {
+        AlertDialog(
+            onDismissRequest = { confirmPowerOff = false },
+            title = { Text("Turn the robot off?") },
+            text = { Text("Nothing is cleaned or recorded until you turn it back on.") },
+            confirmButton = { TextButton(onClick = { confirmPowerOff = false; schedule.powerOff() }) { Text("Turn off") } },
+            dismissButton = { TextButton(onClick = { confirmPowerOff = false }) { Text("Cancel") } },
+        )
+    }
 
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -303,4 +348,39 @@ private fun DurationDialog(title: String, foreverLabel: String, confirm: String,
         confirmButton = { TextButton(onClick = { onPick(if (forever) null else choice) }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * A round power key, like the robot's own button: it glows green when on, goes dark when off, and sinks
+ * with a short click when pressed.
+ */
+@Composable
+private fun PowerKey(on: Boolean, busy: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.86f else 1f, spring(dampingRatio = 0.45f, stiffness = 600f), label = "press")
+    val glow = Tone.Good.color()
+    val tint by animateColorAsState(if (on) glow else MaterialTheme.colorScheme.outline, label = "power tint")
+    val glowAlpha by animateFloatAsState(if (on) 0.35f else 0f, label = "glow")
+    Box(
+        Modifier
+            .size(52.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .drawBehind {
+                drawCircle(Brush.radialGradient(listOf(glow.copy(alpha = glowAlpha), Color.Transparent)), radius = size.minDimension * 0.75f)
+            }
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .border(1.5.dp, tint.copy(alpha = 0.7f), CircleShape)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled && !busy, role = Role.Switch) {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                onToggle()
+            }
+            .semantics { stateDescription = if (on) "On" else "Off" },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = tint)
+        else Icon(Icons.Rounded.PowerSettingsNew, contentDescription = if (on) "Turn off" else "Turn on", tint = tint, modifier = Modifier.size(26.dp))
+    }
 }

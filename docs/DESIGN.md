@@ -289,8 +289,12 @@ control looks, the empty and "collecting data" states.
   `{isEnabled: true, 0, 0}`; an exact alarm at the end puts the rule back. If the phone is off or
   offline at the end, the robot stays asleep until it is back. Works with Manage sleep off too: the
   robot's schedule from before is saved and put back when it ends. **Wake now** ends it early.
-- **Power off** (planned, not built): same picker, `POWER_OFF` / `POWER_ON`. Needs a supervised test
-  that a remotely powered-off EVO still accepts `POWER_ON`.
+- **Power off**: a round power key in the top-right of the Litter status card, like the robot's own
+  button. Plain on/off, no timer (owner's choice). Glows green when on, goes dark when off, sinks with a
+  haptic click when pressed; turning off asks once. While off the whole card goes dark, Clean now and
+  Sleep now are disabled, and nothing else changes the robot. Sends `POWER_OFF` / `POWER_ON`; the hold
+  is cleared only once the robot reports on. **Unverified on the EVO:** whether a remotely powered-off
+  robot still accepts `POWER_ON`; needs a supervised test before release.
 - **"When I'm away" setting (Settings → Presence):** choose **Sleep** (default: no cleaning, visits and
   weights still recorded) or **Power off** (nothing runs, nothing is recorded). Sleep windows at home
   always use sleep. The long-absence power-off below works on top of either choice.

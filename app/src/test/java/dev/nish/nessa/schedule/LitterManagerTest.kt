@@ -300,42 +300,27 @@ class LitterManagerTest {
 
     private fun commandsSent() = requests().filter { it.path!!.endsWith("/commands") }.map { it.body.readUtf8() }
 
-    @Test fun `power off sends the command, confirms, and holds`() = runBlocking {
+    @Test fun `power off sends the command, confirms, and holds until turned on`() = runBlocking {
         store.saved = ManagerState(enabled = true, original = whiskerDefault)
         server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true))
         server.enqueue(MockResponse().setBody("")); server.enqueue(robot(desiredNow(), power = "Off"))
-        assertEquals(ApplyResult.Applied, manager.powerOff(hours = 4))
+        assertEquals(ApplyResult.Applied, manager.powerOff())
         assertEquals(listOf("""{"type":"POWER_OFF"}"""), commandsSent())
         val d = manager.status.value.decision!!
         assertEquals(Reason.PowerOff, d.reason)
-        assertEquals("until 2:00 PM", d.windowName)
-        assertEquals(now.plusSeconds(4 * 3600), manager.status.value.nextCheckAt)
-        assertEquals(listOf("Power off for 4 h"), notes)
+        assertNull(manager.status.value.nextCheckAt)
+        assertEquals(listOf("You turned power off"), notes)
     }
 
     @Test fun `while powered off nothing else is written, and no repeat command is sent`() = runBlocking {
-        store.saved = ManagerState(enabled = true, original = whiskerDefault, powerOff = PowerOff(null))
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, powerOff = PowerOff)
         server.enqueue(tokens()); server.enqueue(robot(whiskerDefault, array = true, power = "Off"))
         assertEquals(ApplyResult.AlreadyRight, manager.apply())
         assertTrue(requests().none { it.method == "PATCH" || it.path!!.endsWith("/commands") })
-        assertEquals("until you turn it on", manager.status.value.decision!!.windowName)
-    }
-
-    @Test fun `power comes back on when the time runs out, then the rule applies`() = runBlocking {
-        store.saved = ManagerState(enabled = true, original = whiskerDefault, powerOff = PowerOff(now.epochSecond - 60))
-        server.enqueue(tokens())
-        server.enqueue(robot(desiredNow(), array = true, power = "Off"))   // power hold check
-        server.enqueue(MockResponse().setBody(""))                          // POWER_ON
-        server.enqueue(robot(desiredNow(), power = "On"))                   // confirm on
-        server.enqueue(robot(desiredNow(), array = true, sleeping = true))  // rule: already right
-        assertEquals(ApplyResult.AlreadyRight, manager.apply())
-        assertEquals(listOf("""{"type":"POWER_ON"}"""), commandsSent())
-        assertNull(manager.state.value.powerOff)
-        assertEquals(listOf("Power off ended"), notes)
     }
 
     @Test fun `power on early`() = runBlocking {
-        store.saved = ManagerState(enabled = false, powerOff = PowerOff(null))
+        store.saved = ManagerState(enabled = false, powerOff = PowerOff)
         server.enqueue(tokens()); server.enqueue(robot(whiskerDefault, array = true, power = "Off"))
         server.enqueue(MockResponse().setBody("")); server.enqueue(robot(whiskerDefault, power = "On"))
         assertEquals(ApplyResult.Applied, manager.powerOn())
@@ -348,12 +333,12 @@ class LitterManagerTest {
         store.saved = ManagerState(enabled = true, original = whiskerDefault)
         server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true))
         server.enqueue(MockResponse().setBody("")); repeat(12) { server.enqueue(robot(desiredNow(), power = "On")) }
-        assertEquals(ApplyResult.Failed, manager.powerOff(hours = null))
+        assertEquals(ApplyResult.Failed, manager.powerOff())
         assertEquals("The robot didn't turn off", manager.status.value.problem)
         assertTrue(manager.state.value.powerOff != null)
     }
 
     @Test fun `power off needs checks and outranks sleep now`() {
-        assertTrue(ManagerState(enabled = false, powerOff = PowerOff(null)).needsChecks)
+        assertTrue(ManagerState(enabled = false, powerOff = PowerOff).needsChecks)
     }
 }

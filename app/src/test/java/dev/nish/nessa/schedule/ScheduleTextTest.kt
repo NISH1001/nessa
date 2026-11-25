@@ -32,6 +32,6 @@ class ScheduleTextTest {
     }
 
     @Test fun `power off reads as Off`() {
-        assertEquals("Off" to "Power off · until you turn it on", Decision(true, Reason.PowerOff, "until you turn it on").let { it.title() to it.detail() })
+        assertEquals("Off" to "Powered off", Decision(true, Reason.PowerOff, null).let { it.title() to it.detail() })
     }
 }

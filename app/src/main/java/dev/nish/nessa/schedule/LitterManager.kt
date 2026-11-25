@@ -36,9 +36,9 @@ import java.time.temporal.ChronoUnit
 @Serializable
 data class SleepNow(val untilEpochSec: Long?, val restoreTo: List<SleepEntry>? = null)
 
-/** "Power off": the robot is switched off until [untilEpochSec] (null = until turned on). Outranks everything. */
+/** "Power off": the robot stays switched off until the owner turns it on. Outranks everything. */
 @Serializable
-data class PowerOff(val untilEpochSec: Long?)
+data object PowerOff
 
 @Serializable
 data class ManagerState(
@@ -122,11 +122,11 @@ class LitterManager(
         }
     }
 
-    /** Switch the robot off for [hours], or until turned on when null. Nothing else changes the robot meanwhile. */
-    suspend fun powerOff(hours: Int?): ApplyResult = mutex.withLock {
+    /** Switch the robot off until [powerOn]. Nothing else changes the robot meanwhile. */
+    suspend fun powerOff(): ApplyResult = mutex.withLock {
         ensureLoaded()
-        onNote(if (hours == null) "Power off until you turn it on" else "Power off for $hours h")
-        save(_state.value.copy(powerOff = PowerOff(hours?.let { now().plusSeconds(it * 3600L).epochSecond })))
+        onNote("You turned power off")
+        save(_state.value.copy(powerOff = PowerOff))
         applyLocked()
     }
 
@@ -152,11 +152,8 @@ class LitterManager(
     }
 
     /** Turns the robot on or off and waits until it says so. */
-    private var robotZone: ZoneId? = null
-
     private suspend fun setPower(on: Boolean): ApplyResult {
         val robot = pickRobot(api.robots(), choice.load()) ?: return fail("No Litter-Robot found on this account")
-        robotZone = runCatching { ZoneId.of(robot.timezone!!) }.getOrNull()
         if ((robot.state?.powerStatus == "On") == on) return ApplyResult.AlreadyRight
         api.command(robot.serial, if (on) RobotCommand.POWER_ON else RobotCommand.POWER_OFF)
         repeat(CONFIRM_TRIES) {
@@ -214,14 +211,7 @@ class LitterManager(
     }
 
     private suspend fun applyLocked(): ApplyResult {
-        _state.value.powerOff?.let { hold ->
-            if (hold.untilEpochSec != null && now().epochSecond >= hold.untilEpochSec) {
-                onNote("Power off ended")
-                val result = endPowerOffLocked()
-                return result
-            }
-            return applyPowerOffLocked(hold)
-        }
+        if (_state.value.powerOff != null) return applyPowerOffLocked()
         _state.value.sleepNow?.let { hold ->
             if (hold.untilEpochSec != null && now().epochSecond >= hold.untilEpochSec) {
                 onNote("Sleep now ended")
@@ -265,14 +255,11 @@ class LitterManager(
         }
     }
 
-    private suspend fun applyPowerOffLocked(hold: PowerOff): ApplyResult = try {
-        val zone = ZoneId.systemDefault()
+    private suspend fun applyPowerOffLocked(): ApplyResult = try {
         val result = setPower(on = false)
-        val decision = Decision(true, Reason.PowerOff, hold.untilEpochSec?.let { untilText(Instant.ofEpochSecond(it), robotZone ?: zone) } ?: "until you turn it on")
         _status.value = ManagerStatus(
-            decision = decision,
+            decision = Decision(true, Reason.PowerOff, null),
             problem = _status.value.problem.takeIf { result == ApplyResult.Failed },
-            nextCheckAt = hold.untilEpochSec?.let(Instant::ofEpochSecond),
             lastAppliedAt = now(),
         )
         result
