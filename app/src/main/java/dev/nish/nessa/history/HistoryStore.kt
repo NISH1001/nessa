@@ -12,6 +12,8 @@ data class StoredActivity(
     val at: Instant,
     val durationSec: Int?,
     val weightLb: Double?,
+    /** Whisker matched this visit to a pet, which it does only when the weight fits her. */
+    val assignedToPet: Boolean = false,
 )
 
 /** The robot's status at one moment. Whisker keeps no history of these, so Nessa records them. */
@@ -33,6 +35,7 @@ fun Activity.toStored(): StoredActivity? {
         at = at,
         durationSec = duration,
         weightLb = petWeight?.div(100),
+        assignedToPet = petIds.isNotEmpty(),
     )
 }
 

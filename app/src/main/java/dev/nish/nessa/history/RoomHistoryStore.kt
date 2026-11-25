@@ -1,7 +1,10 @@
 package dev.nish.nessa.history
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Index
@@ -22,6 +25,7 @@ data class ActivityRow(
     val atMs: Long,
     val durationSec: Int?,
     val weightLb: Double?,
+    @ColumnInfo(defaultValue = "0") val assignedToPet: Boolean = false,
 )
 
 @Entity(tableName = "robot_reading", indices = [Index("atMs")])
@@ -60,7 +64,7 @@ interface HistoryDao {
     fun allReadings(): Flow<List<ReadingRow>>
 }
 
-@Database(entities = [ActivityRow::class, ReadingRow::class], version = 1, exportSchema = false)
+@Database(entities = [ActivityRow::class, ReadingRow::class], version = 2, exportSchema = false)
 abstract class HistoryDatabase : RoomDatabase() {
     abstract fun dao(): HistoryDao
 }
@@ -68,11 +72,11 @@ abstract class HistoryDatabase : RoomDatabase() {
 /** The history database, in the app's private storage. Not backed up; removed on uninstall. */
 class RoomHistoryStore(context: Context, inMemory: Boolean = false) : HistoryStore {
     private val db = (if (inMemory) Room.inMemoryDatabaseBuilder(context, HistoryDatabase::class.java)
-    else Room.databaseBuilder(context.applicationContext, HistoryDatabase::class.java, "nessa_history.db")).build()
+    else Room.databaseBuilder(context.applicationContext, HistoryDatabase::class.java, "nessa_history.db").addMigrations(MIGRATION_1_2)).build()
     private val dao = db.dao()
 
     override suspend fun addActivities(rows: List<StoredActivity>): Int =
-        dao.insertActivities(rows.map { ActivityRow(it.id, it.type, it.at.toEpochMilli(), it.durationSec, it.weightLb) }).count { it != -1L }
+        dao.insertActivities(rows.map { ActivityRow(it.id, it.type, it.at.toEpochMilli(), it.durationSec, it.weightLb, it.assignedToPet) }).count { it != -1L }
 
     override suspend fun hasActivity(id: String) = dao.hasActivity(id)
 
@@ -89,6 +93,18 @@ class RoomHistoryStore(context: Context, inMemory: Boolean = false) : HistorySto
 
     fun close() = db.close()
 
-    private fun ActivityRow.toStored() = StoredActivity(id, type, Instant.ofEpochMilli(atMs), durationSec, weightLb)
+    private fun ActivityRow.toStored() = StoredActivity(id, type, Instant.ofEpochMilli(atMs), durationSec, weightLb, assignedToPet)
     private fun ReadingRow.toReading() = RobotReading(Instant.ofEpochMilli(atMs), drawerPercent, litterPercent, litterLabel, sleeping, powerOn, cycles)
+}
+
+/**
+ * Version 2 adds whether Whisker matched a visit to the pet. Rows stored before can't be filled in, so
+ * the activity table is emptied and the next sync copies the history again from Whisker (it keeps it all).
+ * Robot readings are Nessa's own and are kept.
+ */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DELETE FROM activity")
+        db.execSQL("ALTER TABLE activity ADD COLUMN assignedToPet INTEGER NOT NULL DEFAULT 0")
+    }
 }

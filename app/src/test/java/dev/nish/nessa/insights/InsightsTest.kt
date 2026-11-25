@@ -49,6 +49,13 @@ class InsightsTest {
         assertEquals(8.0, build(acts).weight.usualLb!!, 0.001)
     }
 
+    @Test fun `usual weight anchors on visits Whisker matched to her`() {
+        // Long visits at a wrong low weight outnumber her real ones; Whisker only matches the real ones to her.
+        val wrong = (1..12).map { visit(today.minusDays(it.toLong()), 8, sec = 200, lb = 3.4) }
+        val hers = (1..8).map { visit(today.minusDays(it.toLong()), 18, sec = 200, lb = 9.3).copy(assignedToPet = true) }
+        assertEquals(9.3, build(wrong + hers).weight.usualLb!!, 0.001)
+    }
+
     @Test fun `no usual weight when every reading is an outlier`() {
         val w = build((1..5).map { visit(today.minusDays(it.toLong()), 8, sec = 30, lb = 3.0 + it * 3) }).weight
         assertNull(w.usualLb)

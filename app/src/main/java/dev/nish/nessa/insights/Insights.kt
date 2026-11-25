@@ -101,7 +101,10 @@ fun buildInsights(
 
     // --- weight ---
     val weightWindow = visits.filter { it.weightLb != null && inBaseline(dayOf(it)) }
-    val anchor = median(weightWindow.filter { (it.durationSec ?: 0) > RELIABLE_VISIT_SEC }.map { it.weightLb!! })
+    // Anchor on the visits Whisker matched to her (it only does when the weight fits); without any,
+    // fall back to long visits, which are more often a full reading than a paw on the edge.
+    val anchor = median(weightWindow.filter { it.assignedToPet }.map { it.weightLb!! })
+        ?: median(weightWindow.filter { (it.durationSec ?: 0) > RELIABLE_VISIT_SEC }.map { it.weightLb!! })
     val usualLb = anchor?.let { a -> median(weightWindow.map { it.weightLb!! }.filter { abs(it - a) / a <= OUTLIER }) }
     fun isOutlier(lb: Double) = usualLb != null && abs(lb - usualLb) / usualLb > OUTLIER
     val weight = WeightCard(

@@ -240,8 +240,10 @@ changes how much history the charts show.
 | No local history, download from Whisker each time | Rejected: the drawer and litter trends need readings Whisker doesn't keep; slower; blind offline. |
 
 ### Constraints
-- Weight filter: "usual weight" = median of readings in the selected range that sit within 15% of
-  the median of all readings longer than 60 seconds (long visits are the reliable ones). Outliers
+- Weight filter: "usual weight" = median of readings in the 30 days before today that sit within 15%
+  of an anchor: the median of visits Whisker matched to her (it only matches when the weight fits),
+  or, if there are none, of visits longer than 60 seconds. Checked on real data: unmatched readings
+  were 3–6, 19 and 30 lb; matched ones 7.3–9.4 lb. Outliers
   are still shown, hollow.
 - All times in the robot's own timezone.
 - Medians, never means.

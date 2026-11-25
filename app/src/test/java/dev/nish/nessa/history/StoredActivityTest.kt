@@ -23,4 +23,9 @@ class StoredActivityTest {
     @Test fun `toStored skips unreadable times`() {
         assertNull(Activity("PET_VISIT", "not a time").toStored())
     }
+
+    @Test fun `toStored remembers whether Whisker matched the visit to a pet`() {
+        assertEquals(true, Activity("PET_VISIT", "2026-01-05T10:00:00Z", petIds = listOf("PET-X"), eventId = "a").toStored()!!.assignedToPet)
+        assertEquals(false, Activity("PET_VISIT", "2026-01-05T10:00:00Z", eventId = "b").toStored()!!.assignedToPet)
+    }
 }
