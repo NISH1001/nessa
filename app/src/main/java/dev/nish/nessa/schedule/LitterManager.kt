@@ -36,6 +36,13 @@ import java.time.temporal.ChronoUnit
 @Serializable
 data class SleepNow(val untilEpochSec: Long?, val restoreTo: List<SleepEntry>? = null)
 
+/**
+ * "Wake up": the robot stays active until [untilEpochSec], the moment the sleep it interrupted would have
+ * ended. It also ends if home/away changes ([presence] is what it was when the owner woke it).
+ */
+@Serializable
+data class WakeHold(val untilEpochSec: Long, val presence: String)
+
 /** "Power off": the robot stays switched off until the owner turns it on. Outranks everything. */
 @Serializable
 data object PowerOff
@@ -52,6 +59,7 @@ data class ManagerState(
     val checkpoints: List<Checkpoint> = emptyList(),
     val sleepNow: SleepNow? = null,
     val powerOff: PowerOff? = null,
+    val wake: WakeHold? = null,
 ) {
     /** Whether background checks are needed: sleep management is on, or a Sleep now or Power off is running. */
     val needsChecks: Boolean get() = enabled || sleepNow != null || powerOff != null
@@ -126,8 +134,18 @@ class LitterManager(
     suspend fun powerOff(): ApplyResult = mutex.withLock {
         ensureLoaded()
         onNote("You turned power off")
-        save(_state.value.copy(powerOff = PowerOff))
-        applyLocked()
+        save(_state.value.copy(powerOff = PowerOff, wake = null))
+        val result = try {
+            setPower(on = false)
+        } catch (e: WhiskerException) {
+            fail(e.plainText())
+        }
+        _status.value = ManagerStatus(
+            decision = Decision(true, Reason.PowerOff, null),
+            problem = _status.value.problem.takeIf { result == ApplyResult.Failed },
+            lastAppliedAt = now(),
+        )
+        result
     }
 
     /** Turn the robot back on early. */
@@ -138,16 +156,19 @@ class LitterManager(
         endPowerOffLocked()
     }
 
-    /** Sends power on; only once the robot confirms is the hold cleared and the rule applied again. */
+    /**
+     * Sends power on and clears the hold straight away. The robot can take a minute to start; a hold kept
+     * while waiting once made Nessa turn the robot off again behind the owner's back.
+     */
     private suspend fun endPowerOffLocked(): ApplyResult {
+        save(_state.value.copy(powerOff = null))
+        _status.value = ManagerStatus()
         val result = try {
             setPower(on = true)
         } catch (e: WhiskerException) {
             return fail(e.plainText())
         }
         if (result == ApplyResult.Failed) return result
-        save(_state.value.copy(powerOff = null))
-        _status.value = ManagerStatus()
         return if (_state.value.needsChecks) applyLocked() else result
     }
 
@@ -156,11 +177,34 @@ class LitterManager(
         val robot = pickRobot(api.robots(), choice.load()) ?: return fail("No Litter-Robot found on this account")
         if ((robot.state?.powerStatus == "On") == on) return ApplyResult.AlreadyRight
         api.command(robot.serial, if (on) RobotCommand.POWER_ON else RobotCommand.POWER_OFF)
-        repeat(CONFIRM_TRIES) {
+        repeat(if (on) POWER_ON_TRIES else CONFIRM_TRIES) {
             if ((api.robot(robot.serial).state?.powerStatus == "On") == on) return ApplyResult.Applied
             pause()
         }
-        return fail(if (on) "The robot didn't turn on" else "The robot didn't turn off")
+        return fail(if (on) "The robot hasn't turned on yet" else "The robot didn't turn off")
+    }
+
+    /**
+     * Wake the robot from whatever sleep the rule has it in (Bedtime, Work, away) and keep it active until
+     * that sleep would have ended. Does nothing if the rule doesn't have it asleep.
+     */
+    suspend fun wakeNow(): ApplyResult = mutex.withLock {
+        ensureLoaded()
+        val s = _state.value
+        wakeRequested = s.enabled && s.sleepNow == null && s.powerOff == null
+        try {
+            applyLocked()
+        } finally {
+            wakeRequested = false
+        }
+    }
+
+    private var wakeRequested = false
+
+    private fun where(s: ManagerState): Presence = when (s.override) {
+        Override.Auto -> presence()
+        Override.Home -> Presence.Home
+        Override.Away -> Presence.Away
     }
 
     /** Sleep right away for [hours], or until woken when null. Overrides presence and the schedule. */
@@ -168,7 +212,7 @@ class LitterManager(
         ensureLoaded()
         val until = hours?.let { now().plusSeconds(it * 3600L).epochSecond }
         onNote(if (hours == null) "Sleep now until you wake it" else "Sleep now for $hours h")
-        save(_state.value.copy(sleepNow = SleepNow(until, _state.value.sleepNow?.restoreTo)))
+        save(_state.value.copy(sleepNow = SleepNow(until, _state.value.sleepNow?.restoreTo), wake = null))
         applyLocked()
     }
 
@@ -230,15 +274,24 @@ class LitterManager(
             val local = now().atZone(zone)
             val dow = local.dayOfWeek.value % 7
             val minute = local.hour * 60 + local.minute
-            val where = when (s.override) {
-                Override.Auto -> presence()
-                Override.Home -> Presence.Home
-                Override.Away -> Presence.Away
+            val where = where(s)
+            val ruleDecision = decide(s.schedule, where, dow, minute)
+            // A wake-up lasts until its time, or until home/away changes.
+            var wake = s.wake?.takeIf { now().epochSecond < it.untilEpochSec && it.presence == where.name }
+            if (s.wake != null && wake == null) save(_state.value.copy(wake = null))
+            if (wakeRequested && wake == null && ruleDecision.rest) {
+                val minutes = minutesUntilChange(s.schedule, where, dow, minute) ?: DEFAULT_WAKE_MIN
+                val until = now().truncatedTo(ChronoUnit.MINUTES).plus(minutes.toLong(), ChronoUnit.MINUTES)
+                wake = WakeHold(until.epochSecond, where.name)
+                onNote("You woke it ${untilText(until, zone)}")
+                save(_state.value.copy(wake = wake))
             }
-            val decision = decide(s.schedule, where, dow, minute)
-            val untilChange = minutesUntilChange(s.schedule, where, dow, minute) ?: Int.MAX_VALUE
+            val decision = if (wake != null) Decision(false, Reason.WakeNow, untilText(Instant.ofEpochSecond(wake.untilEpochSec), zone)) else ruleDecision
+            val untilChange = if (wake != null) ((wake.untilEpochSec - now().epochSecond + 59) / 60).toInt()
+            else minutesUntilChange(s.schedule, where, dow, minute) ?: Int.MAX_VALUE
             val nextCheck = now().truncatedTo(ChronoUnit.MINUTES).plus(minOf(untilChange, DAY_MINUTES - minute).toLong(), ChronoUnit.MINUTES)
-            val desired = nativeWeek(s.schedule, where, dow, minute)
+            // While woken, today's entry is switched off so the robot is active; other days keep their nights.
+            val desired = nativeWeek(s.schedule, where, dow, minute).map { if (wake != null && it.dayOfWeek == dow) SleepEntry(dow, false, 480, 480) else it }
 
             val result = write(robot.serial, robot.sleepSchedules, desired, expectResting = decision.rest)
             _status.value = ManagerStatus(
@@ -255,14 +308,21 @@ class LitterManager(
         }
     }
 
+    /**
+     * While the robot is meant to be off, checks only look. If the robot is found on, someone turned it on
+     * at the robot or in Whisker's app: that wins, the hold is dropped, and the normal rule applies again.
+     */
     private suspend fun applyPowerOffLocked(): ApplyResult = try {
-        val result = setPower(on = false)
-        _status.value = ManagerStatus(
-            decision = Decision(true, Reason.PowerOff, null),
-            problem = _status.value.problem.takeIf { result == ApplyResult.Failed },
-            lastAppliedAt = now(),
-        )
-        result
+        val robot = pickRobot(api.robots(), choice.load()) ?: return fail("No Litter-Robot found on this account")
+        if (robot.state?.powerStatus == "On") {
+            onNote("Power was turned on outside Nessa")
+            save(_state.value.copy(powerOff = null))
+            _status.value = ManagerStatus()
+            if (_state.value.needsChecks) applyLocked() else ApplyResult.AlreadyRight
+        } else {
+            _status.value = ManagerStatus(decision = Decision(true, Reason.PowerOff, null), lastAppliedAt = now())
+            ApplyResult.AlreadyRight
+        }
     } catch (e: WhiskerException) {
         fail(e.plainText())
     }
@@ -367,5 +427,7 @@ class LitterManager(
     private companion object {
         const val MAX_CHECKPOINTS = 30
         const val CONFIRM_TRIES = 10
+        const val POWER_ON_TRIES = 30
+        const val DEFAULT_WAKE_MIN = 120
     }
 }

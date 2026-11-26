@@ -341,4 +341,88 @@ class LitterManagerTest {
     @Test fun `power off needs checks and outranks sleep now`() {
         assertTrue(ManagerState(enabled = false, powerOff = PowerOff).needsChecks)
     }
+
+    // --- power: the hold must never fight the owner -------------------------------------------
+
+    @Test fun `power on clears the hold even when the robot is slow to say it is on`() = runBlocking {
+        store.saved = ManagerState(enabled = false, powerOff = PowerOff)
+        server.enqueue(tokens()); server.enqueue(robot(whiskerDefault, array = true, power = "Off"))
+        server.enqueue(MockResponse().setBody("")); repeat(40) { server.enqueue(robot(whiskerDefault, power = "Off")) }
+        manager.powerOn()
+        assertNull(manager.state.value.powerOff)
+        assertNull(store.saved.powerOff)
+        assertEquals(listOf("""{"type":"POWER_ON"}"""), commandsSent())
+    }
+
+    @Test fun `a robot found on while Nessa thinks it is off clears the hold and is never turned off again`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, powerOff = PowerOff)
+        server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true, power = "On", sleeping = true))
+        server.enqueue(robot(desiredNow(), array = true, power = "On", sleeping = true))
+        assertEquals(ApplyResult.AlreadyRight, manager.apply())
+        assertNull(manager.state.value.powerOff)
+        assertTrue(commandsSent().isEmpty())
+        assertEquals(listOf("Power was turned on outside Nessa"), notes)
+    }
+
+    @Test fun `a problem from an earlier attempt is cleared once things are right`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault)
+        server.enqueue(MockResponse().setResponseCode(500))
+        manager.apply()
+        assertEquals("Whisker had a problem (code 500)", manager.status.value.problem)
+        server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true, sleeping = true))
+        manager.apply()
+        assertNull(manager.status.value.problem)
+    }
+
+    // --- Wake up ------------------------------------------------------------------------------
+
+    private fun awakeWeek() = desiredNow().map { if (it.dayOfWeek == 1) SleepEntry(1, false, 480, 480) else it }
+
+    @Test fun `wake up keeps the robot active until the sleep it interrupted would have ended`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault) // Monday 10:00, asleep for Work until 5 PM
+        server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true, sleeping = true))
+        server.enqueue(MockResponse().setBody("{}")); server.enqueue(robot(awakeWeek(), sleeping = false))
+        assertEquals(ApplyResult.Applied, manager.wakeNow())
+        val d = manager.status.value.decision!!
+        assertFalse(d.rest)
+        assertEquals(Reason.WakeNow, d.reason)
+        assertEquals("until 5:00 PM", d.windowName)
+        assertEquals(now.plusSeconds(7 * 3600), manager.status.value.nextCheckAt)
+        assertEquals(listOf("You woke it until 5:00 PM"), notes)
+    }
+
+    @Test fun `wake up ends by itself and the schedule takes over`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, wake = WakeHold(now.epochSecond - 60, "Unknown"))
+        server.enqueue(tokens()); server.enqueue(robot(desiredNow(), array = true, sleeping = true))
+        assertEquals(ApplyResult.AlreadyRight, manager.apply())
+        assertNull(manager.state.value.wake)
+        assertTrue(manager.status.value.decision!!.rest)
+    }
+
+    @Test fun `leaving or coming home ends a wake up`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, override = Override.Away, wake = WakeHold(now.epochSecond + 3600, "Unknown"))
+        val away = (0..6).map { SleepEntry(it, true, 0, 0) }
+        server.enqueue(tokens()); server.enqueue(robot(away, array = true, sleeping = true))
+        manager.apply()
+        assertNull(manager.state.value.wake)
+        assertEquals(Reason.Away, manager.status.value.decision!!.reason)
+    }
+
+    @Test fun `wake up does nothing when the robot is not meant to be asleep`() = runBlocking {
+        now = now.plusSeconds(8 * 3600) // Monday 18:00
+        store.saved = ManagerState(enabled = true, original = whiskerDefault)
+        val evening = nativeWeek(WeekSchedule.default(), Presence.Unknown, 1, 18 * 60)
+        server.enqueue(tokens()); server.enqueue(robot(evening, array = true))
+        manager.wakeNow()
+        assertNull(manager.state.value.wake)
+        assertTrue(notes.isEmpty())
+    }
+
+    @Test fun `sleep now replaces a wake up`() = runBlocking {
+        store.saved = ManagerState(enabled = true, original = whiskerDefault, wake = WakeHold(now.epochSecond + 3600, "Unknown"))
+        val allDay = (0..6).map { SleepEntry(it, true, 0, 0) }
+        server.enqueue(tokens()); server.enqueue(robot(allDay, array = true, sleeping = true))
+        manager.sleepNow(2)
+        assertNull(manager.state.value.wake)
+    }
 }

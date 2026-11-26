@@ -31,6 +31,7 @@ class ScheduleViewModel(app: Application, private val manager: LitterManager, pr
     fun check() = act { manager.apply() }
     fun sleepNow(hours: Int?) = act { manager.sleepNow(hours) }
     fun endSleepNow() = act { manager.endSleepNow() }
+    fun wakeNow() = act { manager.wakeNow() }
     fun powerOff() = act { manager.powerOff() }
     fun powerOn() = act { manager.powerOn() }
 

@@ -94,7 +94,7 @@ data class WeekSchedule(val days: List<List<Window>>) {
 /** Where the owner is, as far as Nessa knows. Unknown means presence detection is off or unavailable. */
 enum class Presence { Home, Away, Unknown }
 
-enum class Reason { Away, QuietWindow, Window, HomeOverridesWindow, HomeFree, NoWindow, SleepNow, PowerOff }
+enum class Reason { Away, QuietWindow, Window, HomeOverridesWindow, HomeFree, NoWindow, SleepNow, PowerOff, WakeNow }
 
 data class Decision(val rest: Boolean, val reason: Reason, val windowName: String?)
 

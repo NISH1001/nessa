@@ -66,6 +66,12 @@ class LitterStatusTest {
         assertEquals(Tone.Good, s.tone)
     }
 
+    @Test fun `drawer almost full is not the headline`() {
+        val s = ui(ready.copy(statusIndicator = StatusIndicator("Drawer almost full", "DRAWER_ALMOST_FULL")))
+        assertEquals("Active", s.headline)
+        assertEquals(Tone.Good, s.tone)
+    }
+
     @Test fun `no status at all shows Working`() = assertEquals("Working", ui(RobotState(isOnline = true, powerStatus = "On")).headline)
 
     @Test fun `robot that does not say it is online is treated as offline`() {

@@ -28,5 +28,6 @@ fun Decision.detail(): String = when (reason) {
     Reason.HomeFree -> "Home"
     Reason.NoWindow -> "No sleep window"
     Reason.PowerOff -> "Powered off"
+    Reason.WakeNow -> "Awake · ${windowName ?: ""}".trimEnd(' ', '·')
     Reason.SleepNow -> "Sleep now · ${windowName ?: ""}".trimEnd(' ', '·')
 }
