@@ -7,16 +7,23 @@ as many sleep windows per day as you like.
 Open source, no ads, no analytics, no Google Play Services. Not affiliated with Whisker.
 
 <p align="center">
-  <img src="docs/screenshots/home.png" width="230" alt="Home: you are home, the litter box is active, and Nessa's visits and weight today">
+  <img src="docs/screenshots/home.png" width="230" alt="Home: you are home, the litter box is sleeping for Bedtime, and Nessa's visits and weight today">
   &nbsp;
-  <img src="docs/screenshots/litter.png" width="230" alt="Litter: status, drawer and litter levels, and the Manage sleep switch">
+  <img src="docs/screenshots/litter.png" width="230" alt="Litter: status with the power key, Clean now and Wake up, drawer and litter levels, and the Manage sleep switch">
   &nbsp;
   <img src="docs/screenshots/schedule.png" width="230" alt="Sleep schedule: pick a day and edit its named sleep windows">
 </p>
 <p align="center">
+  <img src="docs/screenshots/insights-health.png" width="230" alt="Insights: health watch checklist and the weight chart with a dashed median line">
+  &nbsp;
+  <img src="docs/screenshots/insights-visits.png" width="230" alt="Insights: visits per day against her usual, and time in the box">
+  &nbsp;
+  <img src="docs/screenshots/insights-robot.png" width="230" alt="Insights: usual times of day and robot stats">
+</p>
+<p align="center">
   <img src="docs/screenshots/presence.png" width="230" alt="Presence: home Wi-Fi, home area and the away delay">
   &nbsp;
-  <img src="docs/screenshots/log.png" width="230" alt="Log: what Nessa did and what the robot recorded, tagged and filterable">
+  <img src="docs/screenshots/log.png" width="230" alt="Log: visits with length and weight, and cleanings, filterable">
 </p>
 
 ## Why
@@ -39,11 +46,27 @@ weight.
 
 ## What it does
 
-**Home**: whether you're home, what the litter box is doing, and Nessa's visits and weight today.
+**Home**
+- Whether you're home, what the litter box is doing, and Nessa's visits and weight today.
+- **Insights** for 7, 30, 90 days or all time; tap or drag any chart for exact values:
+  - **Health watch**: a checklist for weight, visits, a recent visit and the robot. ✓ when normal, an
+    amber flag when not. Stays quiet until there are two weeks of history.
+  - **Weight**: every reading as a dot with a dashed median line. Readings far from her usual (a paw
+    on the edge, someone moving the box) are drawn hollow and don't count.
+  - **Visits per day** against her usual, busy days in amber, and return trips split into before and
+    after a cleaning.
+  - **Time in the box**, **usual times of day**, and **robot** stats: cleanings, drawer level and
+    forecast, litter, interruptions, safety stops, filter due.
 
 **Litter**
 - Status in one word with its own color: Active (green), Sleeping (indigo), Off or Offline (grey),
-  needs attention (amber). Waste drawer and litter levels. Clean now.
+  needs attention (amber). Waste drawer and litter levels.
+- **Power key**: a round button like the robot's own. Glows green when on, goes dark when off.
+- **Clean now**. After a visit it shows the time left until the robot cleans ("6:12"); tap it to
+  clean at once. The line above reads "Nessa is inside", then "Cleaning in 6:12", then "Cleaning".
+- **Sleep now**: sleep for 1, 2, 4, 8 or 12 hours, or until woken, ignoring presence and the
+  schedule. When the robot is already asleep the button reads **Wake up** and keeps it active until
+  that sleep would have ended.
 - **Manage sleep**: a master switch. While it's on, Nessa writes the robot's sleep schedule. Turning
   it off puts back the schedule the robot had before.
 - **I am**: Auto follows presence detection. Home and Away overrule it by hand.
@@ -80,6 +103,12 @@ Presence comes first. The schedule is the fallback, and also carries quiet time.
 - **Presence is event-driven.** Android tells Nessa when the Wi-Fi changes; nothing polls. The away
   wait is a system alarm, so it fires with the phone asleep. A quiet ongoing notification keeps the
   watcher alive.
+- **History is kept on the phone.** Nessa copies every visit and robot event from Whisker into its
+  own database and records the robot's levels at each check, so trends outlive what Whisker keeps.
+- **The cleaning countdown is exact.** Whisker logs a visit seconds after the cat leaves, stamped with
+  the moment she left; cleaning is due at that time plus the robot's own wait setting.
+- **Nothing is pushed to Nessa.** It polls: every 5 seconds during a visit, every 30 seconds while
+  open, every 15 minutes in the background.
 - **Whisker has no public API.** Nessa talks to the same servers as Whisker's app, following the
   open-source [pylitterbot](https://github.com/natekspencer/pylitterbot) library. If Whisker changes
   something, Nessa can break until it is updated. All of that code is in `whisker/`.
@@ -89,7 +118,8 @@ Presence comes first. The schedule is the fallback, and also carries quiet time.
 - Tested with one Litter-Robot EVO on a Pixel 9. Other Whisker robots are not supported.
 - Days with several windows need the phone on and online at each change. Bedtime does not.
 - If the phone dies while you're home, daytime windows on later days are not applied.
-- "Power off" as an alternative to sleep is not built yet.
+- Nessa can't notify you the instant something happens while it is closed; keep Whisker's app for
+  those notifications.
 - Whisker does not record every visit, and some weights are off, so visit numbers are a floor.
 
 ## Privacy
