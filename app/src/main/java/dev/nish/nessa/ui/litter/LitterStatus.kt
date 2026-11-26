@@ -35,6 +35,9 @@ fun litterStatusUi(robot: Robot, now: Instant, reason: String? = null, shouldRes
         // "Drawer almost full" and the like are shown on the drawer card, not as the robot's state.
         s.statusIndicator?.type == "READY" || s.statusIndicator?.type?.startsWith("DRAWER") == true ->
             Triple("Active", reason?.takeIf { shouldRest == false } ?: "Auto-cleaning", Tone.Good)
+        // A cat inside, the wait and the cleaning itself are shown on the line below, not as the state.
+        s.statusIndicator?.type in setOf("CAT_DETECTED", "CYCLING") || s.state?.startsWith("StRobotCatDetect") == true || s.state == "StRobotClean" ->
+            Triple("Active", null, Tone.Good)
         else -> Triple(s.statusIndicator?.title?.takeIf { it.isNotBlank() } ?: "Working", null, Tone.Good)
     }
     return LitterStatusUi(

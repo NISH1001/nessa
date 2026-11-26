@@ -27,6 +27,12 @@ sealed interface LitterState {
         /** True when the last refresh failed and this is older data. */
         val stale: Boolean = false,
         val problem: String? = null,
+        /** Where the robot is in a visit right now. */
+        val phase: VisitPhase = VisitPhase.None,
+        /** When cleaning is due, if the start of the wait was seen. */
+        val cleanAt: Instant? = null,
+        /** A visit has happened since the last cleaning. */
+        val cleanPending: Boolean = false,
     ) : LitterState
 }
 
@@ -36,8 +42,11 @@ class LitterRepository(
     private val session: WhiskerSession,
     private val choice: RobotChoiceStore,
     private val now: () -> Instant = Instant::now,
+    /** Told when the visit phase changes, with the robot's raw state name, for diagnostics. */
+    private val onPhase: (String?, VisitPhase) -> Unit = { _, _ -> },
 ) {
     private val mutex = Mutex()
+    private var countdown = CleanCountdown()
     private val _state = MutableStateFlow<LitterState>(LitterState.Loading)
     val state: StateFlow<LitterState> = _state
 
@@ -61,7 +70,12 @@ class LitterRepository(
             } catch (e: WhiskerException) {
                 emptyList()
             }
+            val phase = visitPhase(robot)
+            if (phase != countdown.phase) onPhase(robot.state?.state, phase)
+            countdown = countdown.next(phase, now(), robot.litterRobotSettings?.cycleDelay)
             val visits = activities.filter { it.type == "PET_VISIT" }
+            val lastVisitEnd = visits.mapNotNull { parseInstant(it.timestamp) }.maxOrNull()
+            val lastCleaned = activities.filter { it.type == "CYCLE_COMPLETED" }.mapNotNull { parseInstant(it.timestamp) }.maxOrNull()
             val zone = zoneOf(robot)
             val today = now().atZone(zone).toLocalDate()
             _state.value = LitterState.Ready(
@@ -69,6 +83,9 @@ class LitterRepository(
                 todayVisits = visits.count { parseInstant(it.timestamp)?.atZone(zone)?.toLocalDate() == today },
                 lastVisit = visits.maxByOrNull { parseInstant(it.timestamp) ?: Instant.MIN },
                 fetchedAt = now(),
+                phase = countdown.phase,
+                cleanAt = cleanDueAt(phase, lastVisitEnd, lastCleaned, robot.litterRobotSettings?.cycleDelay, countdown.cleanAt),
+                cleanPending = lastVisitEnd != null && (lastCleaned == null || lastVisitEnd > lastCleaned),
             )
         } catch (e: WhiskerException.NeedsReconnect) {
             _state.value = LitterState.NotConnected

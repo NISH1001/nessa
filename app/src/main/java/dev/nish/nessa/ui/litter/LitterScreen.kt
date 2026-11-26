@@ -76,6 +76,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.nish.nessa.data.LitterState
+import dev.nish.nessa.data.VisitPhase
+import dev.nish.nessa.data.cleanText
 import dev.nish.nessa.schedule.Reason
 import dev.nish.nessa.schedule.detail
 import dev.nish.nessa.ui.ConnectWhiskerCard
@@ -98,7 +100,9 @@ fun KeepLitterFresh(vm: LitterViewModel) {
         owner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
                 vm.refresh().join()
-                delay(30_000)
+                // Check often while a visit is in progress so the countdown starts on time.
+                val visiting = (vm.state.value as? LitterState.Ready)?.phase.let { it != null && it != VisitPhase.None }
+                delay(if (visiting) 5_000 else 30_000)
             }
         }
     }
@@ -222,8 +226,9 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
     // Asleep because of Bedtime, a window or being away: the button offers to wake it, not to sleep it again.
     val asleepByRule = managing.enabled && decision?.rest == true && decision.reason != Reason.PowerOff && decision.reason != Reason.SleepNow
     val canWake = sleepingNow || asleepByRule
+    val cleanLabel = liveCleanText(s).let { if (s.phase == VisitPhase.Waiting && s.cleanAt != null) it.removePrefix("Cleaning in ") else "Clean now" }
     StatusCard(
-        s.robot.name ?: "Litter-Robot", status.headline, status.detail, status.tone,
+        s.robot.name ?: "Litter-Robot", status.headline, visitDetail(s, status, withCountdown = true), status.tone,
         trailing = {
             PowerKey(
                 on = !off,
@@ -237,12 +242,12 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             FilledTonalButton(
                 onClick = { confirmClean = true },
-                enabled = !cleaning && !off && status.tone != Tone.Offline,
+                enabled = !cleaning && !off && status.tone != Tone.Offline && s.phase != VisitPhase.CatInside && s.phase != VisitPhase.Cleaning,
                 modifier = Modifier.weight(1f),
             ) {
                 Icon(Icons.Rounded.CleaningServices, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text(if (cleaning) "Starting…" else "Clean now", maxLines = 1)
+                Text(if (cleaning) "Starting…" else cleanLabel, maxLines = 1)
             }
             FilledTonalButton(
                 onClick = {
@@ -393,4 +398,28 @@ private fun PowerKey(on: Boolean, busy: Boolean, enabled: Boolean, onToggle: () 
         if (busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = tint)
         else Icon(Icons.Rounded.PowerSettingsNew, contentDescription = if (on) "Turn off" else "Turn on", tint = tint, modifier = Modifier.size(26.dp))
     }
+}
+
+/** The Clean button's words; ticks every second while a countdown is running. */
+@Composable
+fun liveCleanText(s: LitterState.Ready): String {
+    val cleanAt = s.cleanAt ?: return cleanText(s.phase, null, Instant.now())
+    var now by remember(cleanAt) { mutableStateOf(Instant.now()) }
+    LaunchedEffect(cleanAt) {
+        while (true) {
+            now = Instant.now()
+            delay(1000)
+        }
+    }
+    return cleanText(s.phase, cleanAt, now)
+}
+
+/** The line under the status word: what the visit is doing, or a waiting clean while asleep. */
+@Composable
+fun visitDetail(s: LitterState.Ready, status: LitterStatusUi, withCountdown: Boolean): String? = when {
+    status.tone != Tone.Good && status.tone != Tone.Resting -> status.detail
+    s.phase == VisitPhase.Waiting -> if (withCountdown) liveCleanText(s) else "Waiting to clean"
+    s.phase != VisitPhase.None -> cleanText(s.phase, null, Instant.now())
+    status.tone == Tone.Resting && s.cleanPending -> listOfNotNull(status.detail, "clean pending").joinToString(" · ")
+    else -> status.detail
 }

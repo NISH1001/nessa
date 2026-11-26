@@ -39,7 +39,7 @@ class AppContainer(context: Context) {
     val auth = CognitoAuth(http)
     val session = WhiskerSession(auth, secretStore)
     val api = WhiskerApi(http, userAgent = "nessa/${BuildConfig.VERSION_NAME}", invalidateToken = session::invalidate, idToken = session::idToken)
-    val litter = LitterRepository(api, session, robotChoice)
+    val litter = LitterRepository(api, session, robotChoice, onPhase = { state, phase -> android.util.Log.i("NessaLitter", "robot state $state -> $phase") })
     val history: HistoryStore = RoomHistoryStore(appContext)
     val historySync = HistorySync(api, robotChoice, history, DataStoreSyncProgress(appContext))
     val actions = ActionLog(appContext)

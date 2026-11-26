@@ -45,6 +45,10 @@ data class RobotState(
     val lastSeen: String? = null,
     val wifiRssi: Int? = null,
     val odometerCleanCycles: Int? = null,
+    val displayCode: String? = null,
+    /** "WeightSet" while a cat is on the scale, "WeightClear" or "Clear" otherwise (seen on the EVO). */
+    val catDetect: String? = null,
+    val cycleState: String? = null,
 )
 
 @Serializable
