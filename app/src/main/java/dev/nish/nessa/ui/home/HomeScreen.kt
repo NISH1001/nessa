@@ -33,6 +33,7 @@ import dev.nish.nessa.ui.presenceWhy
 import dev.nish.nessa.ui.settings.label
 import dev.nish.nessa.ui.litter.KeepLitterFresh
 import dev.nish.nessa.ui.litter.StatusCard
+import dev.nish.nessa.ui.litter.visitDetail
 import dev.nish.nessa.ui.litter.color
 import dev.nish.nessa.ui.litter.litterStatusUi
 import dev.nish.nessa.ui.litter.litterViewModel
@@ -80,7 +81,7 @@ fun HomeScreen(onOpenLitter: () -> Unit) {
                         }
                     }
                 }
-                StatusCard("Litter box", status.headline, status.detail, status.tone, Modifier.clickable(onClick = onOpenLitter)) {
+                StatusCard("Litter box", status.headline, visitDetail(s, status, withCountdown = true), status.tone, Modifier.clickable(onClick = onOpenLitter)) {
                     if (s.stale) Text("Couldn't refresh · showing last known", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 Card(Modifier.fillMaxWidth()) {

@@ -60,9 +60,14 @@ class LitterStatusTest {
 
     @Test fun `bonnet removed needs attention`() = assertEquals("Top cover is off", ui(ready.copy(isBonnetRemoved = true)).headline)
 
+    @Test fun `cleaning and a cat inside keep the Active headline`() {
+        assertEquals("Active", ui(ready.copy(statusIndicator = StatusIndicator("Cleaning", "CYCLING"))).headline)
+        assertEquals("Active", ui(ready.copy(state = "StRobotCatDetect", statusIndicator = StatusIndicator("Cat detected", "CAT_DETECTED"))).headline)
+    }
+
     @Test fun `other status uses Whisker's own title`() {
-        val s = ui(ready.copy(statusIndicator = StatusIndicator("Cleaning", "CYCLING")))
-        assertEquals("Cleaning", s.headline)
+        val s = ui(ready.copy(statusIndicator = StatusIndicator("Updating", "FIRMWARE_UPDATE")))
+        assertEquals("Updating", s.headline)
         assertEquals(Tone.Good, s.tone)
     }
 

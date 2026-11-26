@@ -289,6 +289,19 @@ control looks, the empty and "collecting data" states.
   `{isEnabled: true, 0, 0}`; an exact alarm at the end puts the rule back. If the phone is off or
   offline at the end, the robot stays asleep until it is back. Works with Manage sleep off too: the
   robot's schedule from before is saved and put back when it ends. **Wake now** ends it early.
+- **Cleaning countdown**: during a visit the status line reads "Nessa is inside", then "Cleaning in
+  6:12", then "Cleaning"; the Clean button shows just the time left ("6:12", tap to clean at once) and
+  is disabled while she is inside or the globe turns. The Home card shows the same line. Whisker pushes
+  nothing to third parties, so Nessa polls every 5 s during a visit (30 s otherwise).
+  ✅ **Verified on the EVO with a real visit (2026-11-25):**
+  - `catDetect = WeightSet` while she is inside; `WeightClear` once she leaves.
+  - The robot enters `StRobotCatDetectDelay` (indicator `IN_USE`) while she is still inside and stays
+    in it for the whole wait, so the state alone does not say she has left.
+  - The `PET_VISIT` activity appears about 3 s after she leaves, stamped with the moment she left.
+    Cleaning is due at that time plus `litterRobotSettings.cycleDelay` minutes: predicted and actual
+    start matched to the second. Until the entry shows up the phone's own clock is the fallback.
+  - Cleaning reports `StRobotClean`, indicator `CYCLING`, display `DcModeCycle`.
+  - Asleep with a visit since the last cleaning: "… · clean pending" (not yet seen on the robot).
 - **Wake up**: whenever the rule has the robot asleep (Bedtime, a window, away), the Sleep now button
   reads Wake up. It keeps the robot active until that sleep would have ended (or 2 h when there is no
   end, as when away), or until home/away changes; then the rule takes over. Done by switching today's

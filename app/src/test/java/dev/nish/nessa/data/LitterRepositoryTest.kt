@@ -36,7 +36,7 @@ class LitterRepositoryTest {
         val http = OkHttpClient()
         val session = WhiskerSession(CognitoAuth(http, server.url("/").toString(), "c"), secrets)
         val api = WhiskerApi(http, server.url("/").toString(), "nessa/test", session::invalidate, session::idToken)
-        return LitterRepository(api, session, choice) { now }
+        return LitterRepository(api, session, choice, now = { now })
     }
 
     private fun tokens() = MockResponse().setBody("""{"AuthenticationResult":{"IdToken":"id1","RefreshToken":"r1","ExpiresIn":3600}}""")
@@ -225,5 +225,32 @@ class LitterRepositoryTest {
     @Test fun `cleanNow before any robot is loaded does nothing`() = runBlocking {
         assertEquals("No litter box to clean yet", repo.cleanNow())
         assertEquals(0, server.requestCount)
+    }
+
+    private fun robotIn(state: String) = MockResponse().setBody(
+        """[{"serial":"LRE-TEST-0001","type":"LRE","timezone":"America/New_York","litterRobotSettings":{"cycleDelay":5},"state":{"isOnline":true,"powerStatus":"On","state":"$state"}}]""",
+    )
+
+    @Test fun `refreshes track the visit and when cleaning is due`() = runBlocking {
+        server.enqueue(tokens()); server.enqueue(robotIn("StRobotCatDetect")); server.enqueue(MockResponse().setBody("[]"))
+        repo.refresh()
+        assertEquals(VisitPhase.CatInside, (repo.state.value as LitterState.Ready).phase)
+        now = now.plusSeconds(40)
+        server.enqueue(robotIn("StRobotCatDetectDelay")); server.enqueue(MockResponse().setBody("[]"))
+        repo.refresh()
+        val ready = repo.state.value as LitterState.Ready
+        assertEquals(VisitPhase.Waiting, ready.phase)
+        assertEquals(now.plusSeconds(300), ready.cleanAt)
+    }
+
+    @Test fun `a visit newer than the last cleaning is pending`() = runBlocking {
+        server.enqueue(tokens()); server.enqueue(robotIn("StRobotIdle"))
+        server.enqueue(MockResponse().setBody("""[{"type":"PET_VISIT","timestamp":"2026-11-24T02:00:00Z"},{"type":"CYCLE_COMPLETED","timestamp":"2026-11-24T01:00:00Z"}]"""))
+        repo.refresh()
+        assertTrue((repo.state.value as LitterState.Ready).cleanPending)
+        server.enqueue(robotIn("StRobotIdle"))
+        server.enqueue(MockResponse().setBody("""[{"type":"CYCLE_COMPLETED","timestamp":"2026-11-24T02:10:00Z"},{"type":"PET_VISIT","timestamp":"2026-11-24T02:00:00Z"}]"""))
+        repo.refresh()
+        assertFalse((repo.state.value as LitterState.Ready).cleanPending)
     }
 }
