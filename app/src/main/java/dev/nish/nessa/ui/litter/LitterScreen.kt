@@ -76,6 +76,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import dev.nish.nessa.data.LitterState
+import dev.nish.nessa.schedule.Reason
 import dev.nish.nessa.schedule.detail
 import dev.nish.nessa.ui.ConnectWhiskerCard
 import dev.nish.nessa.ui.ScreenBody
@@ -218,6 +219,9 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
     val poweredOff = managing.powerOff != null
     val sleepingNow = managing.sleepNow != null
     val off = poweredOff || status.headline == "Off"
+    // Asleep because of Bedtime, a window or being away: the button offers to wake it, not to sleep it again.
+    val asleepByRule = managing.enabled && decision?.rest == true && decision.reason != Reason.PowerOff && decision.reason != Reason.SleepNow
+    val canWake = sleepingNow || asleepByRule
     StatusCard(
         s.robot.name ?: "Litter-Robot", status.headline, status.detail, status.tone,
         trailing = {
@@ -241,13 +245,19 @@ private fun ReadyContent(s: LitterState.Ready, vm: LitterViewModel) {
                 Text(if (cleaning) "Starting…" else "Clean now", maxLines = 1)
             }
             FilledTonalButton(
-                onClick = { if (sleepingNow) schedule.endSleepNow() else pickSleep = true },
+                onClick = {
+                    when {
+                        sleepingNow -> schedule.endSleepNow()
+                        asleepByRule -> schedule.wakeNow()
+                        else -> pickSleep = true
+                    }
+                },
                 enabled = !scheduleBusy && !off && status.tone != Tone.Offline,
                 modifier = Modifier.weight(1f),
             ) {
-                Icon(if (sleepingNow) Icons.Rounded.WbSunny else Icons.Rounded.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(if (canWake) Icons.Rounded.WbSunny else Icons.Rounded.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text(if (sleepingNow) "Wake up" else "Sleep now", maxLines = 1)
+                Text(if (canWake) "Wake up" else "Sleep now", maxLines = 1)
             }
         }
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }

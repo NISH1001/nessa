@@ -289,6 +289,13 @@ control looks, the empty and "collecting data" states.
   `{isEnabled: true, 0, 0}`; an exact alarm at the end puts the rule back. If the phone is off or
   offline at the end, the robot stays asleep until it is back. Works with Manage sleep off too: the
   robot's schedule from before is saved and put back when it ends. **Wake now** ends it early.
+- **Wake up**: whenever the rule has the robot asleep (Bedtime, a window, away), the Sleep now button
+  reads Wake up. It keeps the robot active until that sleep would have ended (or 2 h when there is no
+  end, as when away), or until home/away changes; then the rule takes over. Done by switching today's
+  entry off on the robot.
+- **Power rules learned the hard way (2026-11-25):** `POWER_OFF` is sent only when the owner presses
+  the key, never from a background check. Pressing power on clears the hold at once; the EVO can take
+  more than 30 s to report on. A robot found on while Nessa thinks it is off wins: the hold is dropped.
 - **Power off**: a round power key in the top-right of the Litter status card, like the robot's own
   button. Plain on/off, no timer (owner's choice). Glows green when on, goes dark when off, sinks with a
   haptic click when pressed; turning off asks once. While off the whole card goes dark, Clean now and

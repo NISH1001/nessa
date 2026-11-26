@@ -34,4 +34,8 @@ class ScheduleTextTest {
     @Test fun `power off reads as Off`() {
         assertEquals("Off" to "Powered off", Decision(true, Reason.PowerOff, null).let { it.title() to it.detail() })
     }
+
+    @Test fun `woken up reads as active with its end`() {
+        assertEquals("Active" to "Awake · until 5:00 PM", Decision(false, Reason.WakeNow, "until 5:00 PM").let { it.title() to it.detail() })
+    }
 }
